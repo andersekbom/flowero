@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Message Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .message-flow {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .connection-form {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        input {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.3);
+            border: 1px solid #4CAF50;
+        }
+
+        .status.disconnected {
+            background: rgba(255, 87, 34, 0.3);
+            border: 1px solid #FF5722;
+        }
+
+        .status.connecting {
+            background: rgba(255, 193, 7, 0.3);
+            border: 1px solid #FFC107;
+        }
+
+        .message-bubble {
+            position: absolute;
+            padding: 15px 20px;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            max-width: 300px;
+            word-wrap: break-word;
+            transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            z-index: 10;
+        }
+
+        .message-topic {
+            font-weight: bold;
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .message-payload {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .message-time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 5px;
+            text-align: right;
+        }
+
+        .stats-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 200px;
+        }
+
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .stats-label {
+            opacity: 0.8;
+        }
+
+        .stats-value {
+            font-weight: bold;
+        }
+
+        .topic-legend {
+            margin-top: 20px;
+        }
+
+        .topic-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .topic-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeOutUp {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+        }
+
+        .message-enter {
+            animation: fadeInUp 0.5s ease-out;
+        }
+
+        .message-exit {
+            animation: fadeOutUp 0.5s ease-out;
+        }
+
+        .live-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 15px;
+            border-radius: 20px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .flower-visualization {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flower-container {
+            position: relative;
+            width: 800px;
+            height: 800px;
+            /* animation: rotate 60s linear infinite; -- DISABLED FOR DEBUGGING */
+        }
+
+        .flower-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 56px;
+            height: 56px;
+            transform: translate(-50%, -50%);
+            background: #fbbf24;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4);
+            z-index: 10;
+        }
+
+        .flower-petal {
+            position: absolute;
+            width: 60px;
+            height: 360px;
+            background: currentColor;
+            transform-origin: 50% 100%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            clip-path: polygon(45% 100%, 10% 0%, 90% 0%, 55% 100%);
+            border-radius: 50% 50% 0% 0%;
+        }
+
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes petalGrow {
+            0% { 
+                transform: scale(0) rotate(0deg);
+                opacity: 0;
+            }
+            100% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        @keyframes petalFade {
+            0% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            100% { 
+                transform: scale(0) rotate(0deg);
+                opacity: 0;
+            }
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        select option {
+            background: #2a5298;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>MQTT Visualizer</h1>
+            
+            <div id="status" class="status disconnected">
+                Disconnected
+            </div>
+
+            <div class="connection-form">
+                <div class="form-group">
+                    <label for="host">Broker</label>
+                    <input type="text" id="host" placeholder="broker.emqx.io" value="broker.emqx.io">
+                </div>
+                
+                <div class="form-group">
+                    <label for="port">Port</label>
+                    <input type="number" id="port" placeholder="1883" value="1883">
+                </div>
+                
+                <div class="form-group">
+                    <label for="username">Username (Optional)</label>
+                    <input type="text" id="username" placeholder="">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password (Optional)</label>
+                    <input type="password" id="password" placeholder="">
+                </div>
+                
+                <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+            </div>
+
+            <div class="connection-form">
+                <div class="form-group">
+                    <label for="topic">Topic to Subscribe</label>
+                    <input type="text" id="topic" placeholder="home/# or sensor/+/data">
+                </div>
+                
+                <button id="subscribeBtn" onclick="subscribeToTopic()" disabled>Subscribe</button>
+            </div>
+
+            <div class="visualization-selector">
+                <h3>Visualization Mode</h3>
+                <div class="form-group">
+                    <select id="visualizationMode" onchange="switchVisualization()">
+                        <option value="bubbles">Floating Bubbles</option>
+                        <option value="flower">Growing Flower</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="topic-legend">
+                <h3>Active Topics</h3>
+                <div id="topicList">
+                    <div style="opacity: 0.6; font-size: 12px; margin-top: 10px;">
+                        No subscriptions yet
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="message-flow" id="messageFlow">
+                <div class="live-indicator" id="liveIndicator" style="display: none;">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+
+                <div class="stats-panel">
+                    <div class="stats-item">
+                        <span class="stats-label">Messages/sec:</span>
+                        <span class="stats-value" id="messageRate">0.0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Total Messages:</span>
+                        <span class="stats-value" id="totalMessages">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Active Topics:</span>
+                        <span class="stats-value" id="activeTopics">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Connection:</span>
+                        <span class="stats-value" id="connectionStatus">Offline</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flower-visualization" id="flowerVisualization" style="display: none;">
+                <div class="flower-container" id="flowerContainer">
+                    <div class="flower-center"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

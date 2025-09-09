@@ -1,0 +1,14 @@
+{
+  "YM TEST": {
+    "broker_host": "connect.test.youmoni.com",
+    "port": 1883,
+    "username": "broker",
+    "password": "pellesnusk1845",
+    "topics": [
+      "#",
+      "/#"
+    ],
+    "created": "2025-09-09T12:05:57.088322",
+    "last_used": "2025-09-09T12:05:57.088334"
+  }
+}
