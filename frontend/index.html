@@ -5,6 +5,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MQTT Message Visualizer</title>
     <style>
+        :root {
+            /* Default theme (light blue) */
+            --bg-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --sidebar-bg: rgba(0, 0, 0, 0.3);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-color: white;
+            --input-bg: rgba(255, 255, 255, 0.1);
+            --input-border: rgba(255, 255, 255, 0.2);
+            --button-bg: #4CAF50;
+            --button-hover: #45a049;
+            --stats-bg: rgba(0, 0, 0, 0.4);
+            --toggle-bg: rgba(255, 255, 255, 0.1);
+            --toggle-hover: rgba(255, 255, 255, 0.2);
+        }
+
+        [data-theme="dark"] {
+            /* Dark theme with neon colors */
+            --bg-gradient: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+            --sidebar-bg: rgba(10, 10, 10, 0.9);
+            --border-color: rgba(0, 255, 255, 0.3);
+            --text-color: #00ffff;
+            --input-bg: rgba(0, 20, 20, 0.8);
+            --input-border: rgba(0, 255, 255, 0.4);
+            --button-bg: #00ff41;
+            --button-hover: #00cc33;
+            --stats-bg: rgba(0, 0, 0, 0.8);
+            --toggle-bg: rgba(0, 255, 255, 0.2);
+            --toggle-hover: rgba(0, 255, 255, 0.4);
+        }
+
+        [data-theme="spring"] {
+            /* Spring theme - fresh greens and pastels */
+            --bg-gradient: linear-gradient(135deg, #a8e6cf 0%, #dcedc1 100%);
+            --sidebar-bg: rgba(255, 255, 255, 0.7);
+            --border-color: rgba(76, 175, 80, 0.3);
+            --text-color: #2e7d32;
+            --input-bg: rgba(255, 255, 255, 0.8);
+            --input-border: rgba(76, 175, 80, 0.4);
+            --button-bg: #4CAF50;
+            --button-hover: #45a049;
+            --stats-bg: rgba(255, 255, 255, 0.8);
+            --toggle-bg: rgba(76, 175, 80, 0.2);
+            --toggle-hover: rgba(76, 175, 80, 0.4);
+        }
+
+        [data-theme="summer"] {
+            /* Summer theme - bright oranges and yellows */
+            --bg-gradient: linear-gradient(135deg, #ffd89b 0%, #19547b 100%);
+            --sidebar-bg: rgba(255, 255, 255, 0.6);
+            --border-color: rgba(255, 152, 0, 0.4);
+            --text-color: #e65100;
+            --input-bg: rgba(255, 255, 255, 0.7);
+            --input-border: rgba(255, 152, 0, 0.5);
+            --button-bg: #FF9800;
+            --button-hover: #F57C00;
+            --stats-bg: rgba(255, 255, 255, 0.7);
+            --toggle-bg: rgba(255, 152, 0, 0.2);
+            --toggle-hover: rgba(255, 152, 0, 0.4);
+        }
+
+        [data-theme="autumn"] {
+            /* Autumn theme - warm browns and oranges */
+            --bg-gradient: linear-gradient(135deg, #d2691e 0%, #8b4513 100%);
+            --sidebar-bg: rgba(139, 69, 19, 0.8);
+            --border-color: rgba(255, 140, 0, 0.4);
+            --text-color: #fff8dc;
+            --input-bg: rgba(160, 82, 45, 0.6);
+            --input-border: rgba(255, 140, 0, 0.5);
+            --button-bg: #D2691E;
+            --button-hover: #A0522D;
+            --stats-bg: rgba(139, 69, 19, 0.8);
+            --toggle-bg: rgba(255, 140, 0, 0.2);
+            --toggle-hover: rgba(255, 140, 0, 0.4);
+        }
+
+        [data-theme="winter"] {
+            /* Winter theme - cool blues and whites */
+            --bg-gradient: linear-gradient(135deg, #e6f3ff 0%, #4682b4 100%);
+            --sidebar-bg: rgba(176, 196, 222, 0.8);
+            --border-color: rgba(70, 130, 180, 0.4);
+            --text-color: #191970;
+            --input-bg: rgba(248, 248, 255, 0.8);
+            --input-border: rgba(70, 130, 180, 0.5);
+            --button-bg: #4682B4;
+            --button-hover: #36648B;
+            --stats-bg: rgba(248, 248, 255, 0.8);
+            --toggle-bg: rgba(70, 130, 180, 0.2);
+            --toggle-hover: rgba(70, 130, 180, 0.4);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,10 +103,11 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
+            background: var(--bg-gradient);
+            color: var(--text-color);
             height: 100vh;
             overflow: hidden;
+            transition: all 0.3s ease;
         }
 
         .container {
@@ -26,9 +117,61 @@
 
         .sidebar {
             width: 300px;
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            position: relative;
+            transition: width 0.3s ease;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed {
+            width: 60px;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            top: 20px;
+            right: 15px;
+            width: 30px;
+            height: 30px;
+            background: var(--toggle-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--toggle-hover);
+            border-color: var(--border-color);
+        }
+
+        .chevron {
+            width: 16px;
+            height: 16px;
+            color: var(--text-color);
+            transition: transform 0.3s ease;
+            transform: rotate(0deg);
+        }
+
+        .sidebar.collapsed .chevron {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-content {
             padding: 20px;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 60px;
+            transition: opacity 0.3s ease;
+            min-width: 300px;
+        }
+
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            pointer-events: none;
         }
 
         .main-content {
@@ -75,24 +218,26 @@
         }
 
         input {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--input-border);
         }
 
         input::placeholder {
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--text-color);
+            opacity: 0.6;
         }
 
         button {
-            background: #4CAF50;
-            color: white;
+            background: var(--button-bg);
+            color: black;
             cursor: pointer;
             transition: background 0.3s;
+            font-weight: bold;
         }
 
         button:hover {
-            background: #45a049;
+            background: var(--button-hover);
         }
 
         button:disabled {
@@ -125,31 +270,39 @@
 
         .message-bubble {
             position: absolute;
-            padding: 15px 20px;
-            border-radius: 25px;
+            padding: 12px 16px;
+            border-radius: 20px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            max-width: 300px;
+            max-width: 250px;
+            min-width: 180px;
             word-wrap: break-word;
             transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             z-index: 10;
         }
 
-        .message-topic {
+        .message-customer {
             font-weight: bold;
-            font-size: 12px;
-            opacity: 0.9;
-            margin-bottom: 5px;
+            font-size: 14px;
+            color: white !important;
+            margin-bottom: 3px;
             text-transform: uppercase;
             letter-spacing: 1px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
 
-        .message-payload {
-            font-size: 14px;
-            line-height: 1.4;
+        .message-topic {
+            font-weight: bold;
+            font-size: 10px;
+            color: white !important;
+            opacity: 0.8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .message-time {
             font-size: 10px;
+            color: white !important;
             opacity: 0.7;
             margin-top: 5px;
             text-align: right;
@@ -159,10 +312,12 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.4);
+            background: var(--stats-bg);
             padding: 15px;
             border-radius: 10px;
             min-width: 200px;
+            z-index: 100;
+            border: 1px solid var(--border-color);
         }
 
         .stats-item {
@@ -236,6 +391,47 @@
             background: rgba(0, 0, 0, 0.4);
             padding: 10px 15px;
             border-radius: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .color-legend {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            background: var(--stats-bg);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            min-width: 150px;
+            z-index: 90;
+        }
+
+        .legend-title {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 11px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .legend-customer {
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
 
         .live-dot {
@@ -327,21 +523,32 @@
             border: none;
             border-radius: 5px;
             font-size: 14px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--input-border);
         }
 
         select option {
-            background: #2a5298;
-            color: white;
+            background: var(--sidebar-bg);
+            color: var(--text-color);
+        }
+
+        /* Dark theme neon colors for message bubbles */
+        [data-theme="dark"] .message-bubble {
+            box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2);
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="sidebar">
-            <h1>MQTT Visualizer</h1>
+        <div class="sidebar collapsed" id="sidebar">
+            <div class="sidebar-toggle" id="sidebarToggle">
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+            </div>
+            <div class="sidebar-content">
+                <h1>Flowero</h1>
             
             <div id="status" class="status disconnected">
                 Disconnected
@@ -390,6 +597,20 @@
                 </div>
             </div>
 
+            <div class="theme-selector">
+                <h3>Theme</h3>
+                <div class="form-group">
+                    <select id="themeMode" onchange="switchTheme()">
+                        <option value="default">Blue Gradient</option>
+                        <option value="dark">Neon Dark</option>
+                        <option value="spring">🌸 Spring</option>
+                        <option value="summer">☀️ Summer</option>
+                        <option value="autumn">🍂 Autumn</option>
+                        <option value="winter">❄️ Winter</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="topic-legend">
                 <h3>Active Topics</h3>
                 <div id="topicList">
@@ -398,6 +619,7 @@
                     </div>
                 </div>
             </div>
+            </div>
         </div>
 
         <div class="main-content">
@@ -405,6 +627,13 @@
                 <div class="live-indicator" id="liveIndicator" style="display: none;">
                     <div class="live-dot"></div>
                     <span>LIVE</span>
+                </div>
+
+                <div class="color-legend" id="colorLegend" style="display: none;">
+                    <div class="legend-title">Topic Colors</div>
+                    <div id="legendItems">
+                        <!-- Legend items will be populated by JavaScript -->
+                    </div>
                 </div>
 
                 <div class="stats-panel">
