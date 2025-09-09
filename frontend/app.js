@@ -23,6 +23,8 @@ class MQTTVisualizer {
 
         // Initialize UI
         this.initializeEventListeners();
+        this.initializeSidebarToggle();
+        this.initializeTheme();
         this.startStatsUpdate();
     }
 
@@ -35,6 +37,68 @@ class MQTTVisualizer {
         document.getElementById('topic').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.subscribeToTopic();
         });
+    }
+
+    initializeSidebarToggle() {
+        const toggleButton = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('sidebar');
+        
+        if (toggleButton && sidebar) {
+            toggleButton.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+    }
+
+    initializeTheme() {
+        // Load saved theme from localStorage or default to 'default'
+        const savedTheme = localStorage.getItem('flowero-theme') || 'default';
+        this.applyTheme(savedTheme);
+        
+        // Set the select dropdown to match
+        const themeSelector = document.getElementById('themeMode');
+        if (themeSelector) {
+            themeSelector.value = savedTheme;
+        }
+    }
+
+    switchTheme() {
+        const themeSelector = document.getElementById('themeMode');
+        const selectedTheme = themeSelector.value;
+        
+        this.applyTheme(selectedTheme);
+        
+        // Save theme preference
+        localStorage.setItem('flowero-theme', selectedTheme);
+    }
+
+    applyTheme(theme) {
+        const body = document.body;
+        
+        if (theme === 'default') {
+            body.removeAttribute('data-theme');
+        } else {
+            body.setAttribute('data-theme', theme);
+        }
+        
+        // Refresh topic colors for new theme
+        this.refreshTopicColors();
+    }
+
+    refreshTopicColors() {
+        // Clear existing colors to regenerate with new theme
+        this.topicColors.clear();
+        if (this.customerColors) {
+            this.customerColors.clear();
+        }
+        
+        // If we have active topics, regenerate their colors
+        if (this.activeTopics.size > 0) {
+            const topics = Array.from(this.activeTopics);
+            topics.forEach(topic => {
+                this.getTopicColor(topic); // This will generate new colors for the current theme
+            });
+        }
     }
 
     // WebSocket Management
@@ -133,67 +197,53 @@ class MQTTVisualizer {
         bubble.style.border = `2px solid ${color}`;
         
         // Create message content
+        const customer = this.extractCustomerFromTopic(messageData.topic);
         bubble.innerHTML = `
+            <div class="message-customer">${customer}</div>
             <div class="message-topic">${messageData.topic}</div>
-            <div class="message-payload">${this.formatPayload(messageData.payload)}</div>
             <div class="message-time">${this.formatTime(messageData.timestamp)}</div>
         `;
         
-        // Random starting position (right side, with more variety in height)
+        // Add to DOM first so we can get dimensions
         const flowArea = document.getElementById('messageFlow');
-        const startX = flowArea.clientWidth + 50;
-        const startY = Math.random() * (flowArea.clientHeight - 150) + 75;
+        flowArea.appendChild(bubble);
+        
+        // Random starting position (top, with more variety in width)
+        const startX = Math.random() * (flowArea.clientWidth - 300) + 150;
+        const startY = -bubble.offsetHeight - 50;
         
         bubble.style.left = `${startX}px`;
         bubble.style.top = `${startY}px`;
         
-        flowArea.appendChild(bubble);
-        
-        // Animate across screen with upward movement
+        // Animate down screen with downward movement
         this.animateMessage(bubble);
         
-        // Remove bubble after longer animation
+        // Remove bubble after animation completes
         setTimeout(() => {
             if (bubble.parentNode) {
                 bubble.classList.add('message-exit');
                 setTimeout(() => bubble.remove(), 500);
             }
-        }, 12000);
+        }, 8000);
     }
 
     animateMessage(bubble) {
         const flowArea = document.getElementById('messageFlow');
         const startX = parseFloat(bubble.style.left);
         const startY = parseFloat(bubble.style.top);
-        const targetX = -bubble.offsetWidth - 100;
-        const duration = 12000; // 12 seconds to cross screen
+        const targetY = flowArea.clientHeight + bubble.offsetHeight + 100;
+        const duration = 8000; // 8 seconds to cross screen (1.5x speed)
         const startTime = Date.now();
-        
-        // Random upward drift
-        const upwardDrift = -30 - (Math.random() * 40); // -30 to -70px upward movement
-        const targetY = startY + upwardDrift;
         
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Easing function for smooth movement
-            const easeOutCubic = 1 - Math.pow(1 - progress, 3);
-            const currentX = startX + (targetX - startX) * easeOutCubic;
+            // Straight down movement only
+            const currentY = startY + (targetY - startY) * progress;
             
-            // Upward movement with gentle floating
-            const upwardProgress = Math.pow(progress, 0.7); // Slower upward movement
-            const currentY = startY + (targetY - startY) * upwardProgress;
-            
-            // Add gentle floating motion
-            const floatY = Math.sin(progress * Math.PI * 3) * 8;
-            
-            bubble.style.left = `${currentX}px`;
-            bubble.style.top = `${currentY + floatY}px`;
-            
-            // Add slight rotation for more dynamic feel
-            const rotation = Math.sin(progress * Math.PI * 2) * 2;
-            bubble.style.transform = `rotate(${rotation}deg)`;
+            bubble.style.left = `${startX}px`;
+            bubble.style.top = `${currentY}px`;
             
             if (progress < 1 && bubble.parentNode) {
                 requestAnimationFrame(animate);
@@ -361,15 +411,67 @@ class MQTTVisualizer {
     // Utility Functions
     getTopicColor(topic) {
         if (!this.topicColors.has(topic)) {
-            const colors = [
-                '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-                '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-            ];
-            const color = colors[this.topicColors.size % colors.length];
+            const customer = this.extractCustomerFromTopic(topic);
+            const color = this.getCustomerColor(customer);
             this.topicColors.set(topic, color);
             this.updateTopicLegend();
         }
         return this.topicColors.get(topic);
+    }
+
+    getCustomerColor(customer) {
+        // Initialize customer colors map if it doesn't exist
+        if (!this.customerColors) {
+            this.customerColors = new Map();
+        }
+
+        if (!this.customerColors.has(customer)) {
+            const currentTheme = document.body.getAttribute('data-theme') || 'default';
+            
+            let colors;
+            switch (currentTheme) {
+                case 'dark':
+                    colors = [
+                        '#00FF41', '#00FFFF', '#FF1493', '#FF4500', '#FFFF00',
+                        '#FF69B4', '#00FA9A', '#FF6347', '#7FFF00', '#00BFFF'
+                    ];
+                    break;
+                case 'spring':
+                    colors = [
+                        '#8BC34A', '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7',
+                        '#C8E6C9', '#E8F5E8', '#FFEB3B', '#FFF176', '#FFECB3'
+                    ];
+                    break;
+                case 'summer':
+                    colors = [
+                        '#FF9800', '#FFB74D', '#FFCC02', '#FFC107', '#FF8F00',
+                        '#FF6F00', '#E65100', '#FF5722', '#FF7043', '#FFAB40'
+                    ];
+                    break;
+                case 'autumn':
+                    colors = [
+                        '#D2691E', '#CD853F', '#DEB887', '#F4A460', '#DAA520',
+                        '#B8860B', '#A0522D', '#8B4513', '#FF8C00', '#FF7F50'
+                    ];
+                    break;
+                case 'winter':
+                    colors = [
+                        '#4682B4', '#5F9EA0', '#6495ED', '#87CEEB', '#B0C4DE',
+                        '#B0E0E6', '#ADD8E6', '#E0F6FF', '#F0F8FF', '#DCDCDC'
+                    ];
+                    break;
+                default: // default theme
+                    colors = [
+                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+                        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+                    ];
+            }
+            
+            const color = colors[this.customerColors.size % colors.length];
+            this.customerColors.set(customer, color);
+        }
+        
+        return this.customerColors.get(customer);
     }
 
     formatPayload(payload) {
@@ -382,6 +484,12 @@ class MQTTVisualizer {
     formatTime(timestamp) {
         const date = new Date(timestamp * 1000);
         return date.toLocaleTimeString();
+    }
+
+    extractCustomerFromTopic(topic) {
+        // Extract the first part of the topic (before the first slash)
+        const parts = topic.split('/');
+        return parts[0] || topic;
     }
 
     // UI Updates
@@ -423,10 +531,12 @@ class MQTTVisualizer {
     }
 
     updateTopicLegend() {
+        // Update sidebar legend
         const topicList = document.getElementById('topicList');
         
         if (this.topicColors.size === 0) {
             topicList.innerHTML = '<div style="opacity: 0.6; font-size: 12px; margin-top: 10px;">No subscriptions yet</div>';
+            this.updateMainLegend();
             return;
         }
         
@@ -439,6 +549,33 @@ class MQTTVisualizer {
                 <span>${topic}</span>
             `;
             topicList.appendChild(item);
+        });
+        
+        // Update main content area legend
+        this.updateMainLegend();
+    }
+
+    updateMainLegend() {
+        const colorLegend = document.getElementById('colorLegend');
+        const legendItems = document.getElementById('legendItems');
+        
+        if (!this.customerColors || this.customerColors.size === 0) {
+            colorLegend.style.display = 'none';
+            return;
+        }
+        
+        colorLegend.style.display = 'block';
+        legendItems.innerHTML = '';
+        
+        // Display each customer with their assigned color
+        this.customerColors.forEach((color, customer) => {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.innerHTML = `
+                <div class="legend-color" style="background-color: ${color}"></div>
+                <span class="legend-customer">${customer.toUpperCase()}</span>
+            `;
+            legendItems.appendChild(item);
         });
     }
 
@@ -597,6 +734,10 @@ function subscribeToTopic() {
 
 function switchVisualization() {
     visualizer.switchVisualization();
+}
+
+function switchTheme() {
+    visualizer.switchTheme();
 }
 
 // Initialize when page loads
