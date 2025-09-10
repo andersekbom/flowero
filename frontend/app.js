@@ -25,6 +25,7 @@ class MQTTVisualizer {
         this.initializeEventListeners();
         this.initializeSidebarToggle();
         this.initializeTheme();
+        this.initializeModal();
         this.startStatsUpdate();
     }
 
@@ -99,6 +100,61 @@ class MQTTVisualizer {
                 this.getTopicColor(topic); // This will generate new colors for the current theme
             });
         }
+    }
+
+    initializeModal() {
+        const modal = document.getElementById('messageModal');
+        const closeButton = document.getElementById('modalClose');
+        
+        // Close modal when clicking the X button
+        closeButton.addEventListener('click', () => {
+            this.closeModal();
+        });
+        
+        // Close modal when clicking outside the modal content
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+        
+        // Close modal when pressing Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'block') {
+                this.closeModal();
+            }
+        });
+    }
+
+    showMessageModal(messageData) {
+        const modal = document.getElementById('messageModal');
+        const modalContent = modal.querySelector('.modal-content');
+        const customer = this.extractCustomerFromTopic(messageData.topic);
+        const color = this.getTopicColor(messageData.topic);
+        
+        // Style modal to match the card (solid colors, no transparency)
+        modalContent.style.background = `linear-gradient(135deg, ${color}, ${color}E6)`;
+        modalContent.style.border = `2px solid ${color}`;
+        
+        // Populate modal fields with all message details
+        document.getElementById('modalCustomer').textContent = customer.toUpperCase();
+        document.getElementById('modalTopic').textContent = messageData.topic;
+        document.getElementById('modalTimestamp').textContent = new Date(messageData.timestamp * 1000).toLocaleString();
+        document.getElementById('modalPayload').textContent = messageData.payload;
+        document.getElementById('modalQos').textContent = messageData.qos || '0';
+        document.getElementById('modalRetain').textContent = messageData.retain ? 'Yes' : 'No';
+        
+        // Show all fields (in case they were hidden before)
+        document.querySelector('.modal-field:nth-child(5)').style.display = 'block'; // QoS
+        document.querySelector('.modal-field:nth-child(6)').style.display = 'block'; // Retain
+        
+        // Show modal
+        modal.style.display = 'block';
+    }
+
+    closeModal() {
+        const modal = document.getElementById('messageModal');
+        modal.style.display = 'none';
     }
 
     // WebSocket Management
@@ -203,6 +259,11 @@ class MQTTVisualizer {
             <div class="message-topic">${messageData.topic}</div>
             <div class="message-time">${this.formatTime(messageData.timestamp)}</div>
         `;
+        
+        // Add click event listener to show modal
+        bubble.addEventListener('click', () => {
+            this.showMessageModal(messageData);
+        });
         
         // Add to DOM first so we can get dimensions
         const flowArea = document.getElementById('messageFlow');
@@ -531,27 +592,7 @@ class MQTTVisualizer {
     }
 
     updateTopicLegend() {
-        // Update sidebar legend
-        const topicList = document.getElementById('topicList');
-        
-        if (this.topicColors.size === 0) {
-            topicList.innerHTML = '<div style="opacity: 0.6; font-size: 12px; margin-top: 10px;">No subscriptions yet</div>';
-            this.updateMainLegend();
-            return;
-        }
-        
-        topicList.innerHTML = '';
-        this.topicColors.forEach((color, topic) => {
-            const item = document.createElement('div');
-            item.className = 'topic-item';
-            item.innerHTML = `
-                <div class="topic-color" style="background-color: ${color}"></div>
-                <span>${topic}</span>
-            `;
-            topicList.appendChild(item);
-        });
-        
-        // Update main content area legend
+        // Update main content area legend only (sidebar topic list removed)
         this.updateMainLegend();
     }
 
