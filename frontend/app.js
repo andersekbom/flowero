@@ -103,6 +103,9 @@ class MQTTVisualizer {
             colorLegend: document.getElementById('colorLegend'),
             legendItems: document.getElementById('legendItems'),
             
+            // Stats panel
+            statsPanel: document.getElementById('statsPanel'),
+            
             // Theme elements
             themeMode: document.getElementById('themeMode'),
             sidebar: document.getElementById('sidebar')
@@ -308,6 +311,9 @@ class MQTTVisualizer {
             this.isConnected = true;
             this.domElements.subscribeBtn.disabled = false;
             this.domElements.liveIndicator.style.display = 'flex';
+            
+            // Show UI elements when connected
+            this.domElements.statsPanel.style.display = 'block';
         } else {
             this.isConnected = false;
             this.domElements.subscribeBtn.disabled = true;
@@ -392,8 +398,8 @@ class MQTTVisualizer {
             const centerX = flowWidth / 2;
             const centerY = flowHeight / 2;
             const maxOffset = 100; // Larger area for more spread
-            startX = centerX + (Math.random() - 0.3) * maxOffset;
-            startY = centerY + (Math.random() - 0.3) * maxOffset;
+            startX = centerX + (Math.random() - 0.5) * maxOffset;
+            startY = centerY + (Math.random() - 0.5) * maxOffset;
         } else {
             // Default bubbles mode: start from top with horizontal distribution
             const safeCardWidth = 400; // Use CSS max-width value
@@ -536,8 +542,8 @@ class MQTTVisualizer {
                 const finalY = startY + (targetY - startY) * speedAdjustedMovement;
                 
                 // Scale effect: start small and grow larger (simulating approach)
-                const scale = 0.2 + (Math.min(baseProgress, 1) * 2); // 0.2 to 2.0, bigger final size
-                
+                const scale = 0.1 + (Math.min(baseProgress, 1) * 2.5); // 0.1 to 2.0, bigger final size
+
                 // Opacity: fade in quickly, stay visible, then fade out
                 let opacity;
                 const clampedProgress = Math.min(baseProgress, 1); // Clamp opacity calculations to 0-1 range
@@ -986,6 +992,9 @@ class MQTTVisualizer {
         this.updateTopicLegend();
         this.updateStats();
         this.clearAllVisualizations();
+        
+        // Hide UI elements when disconnected
+        this.domElements.statsPanel.style.display = 'none';
     }
 
     async subscribeToTopic() {
