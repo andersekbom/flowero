@@ -342,14 +342,32 @@ class MQTTVisualizer {
         // Add to DOM first so we can get dimensions (using cached element)
         this.domElements.messageFlow.appendChild(bubble);
         
-        // Random starting position (top, with proper bounds checking)
+        // Force layout calculation and get actual dimensions
+        bubble.offsetHeight; // Trigger layout calculation
+        
+        // Get actual dimensions after DOM insertion
         const flowWidth = this.domElements.messageFlow.clientWidth;
-        const bubbleWidth = bubble.offsetWidth || 250; // Use actual width or fallback
-        const maxX = Math.max(flowWidth - bubbleWidth - 20, 20); // Ensure minimum margins
-        const startX = Math.random() * maxX + 10; // 10px left margin
+        const bubbleWidth = bubble.offsetWidth;
+        
+        // Debug logging
+        //console.log('Container width:', flowWidth, 'Bubble width:', bubbleWidth, 'Bubble actual width:', bubble.getBoundingClientRect().width);
+        
+        // Use the maximum possible card width (250px from CSS) to be absolutely safe
+        const safeCardWidth = 250; // Use CSS max-width value
+        
+        // Calculate maximum allowed X position with hard cap
+        const maxAllowedX = Math.min(flowWidth - safeCardWidth - 20, 750);
+        const minX = 20; // 20px margin from left edge
+        
+        // Ensure we have a valid range for distribution
+        const availableRange = maxAllowedX > minX ? maxAllowedX - minX : 0;
+        const startX = minX + Math.random() * availableRange;
+        
+        //console.log('MaxAllowedX:', maxAllowedX, 'MinX:', minX, 'AvailableRange:', availableRange, 'StartX:', startX);
         const startY = -bubble.offsetHeight - 50;
         
-        // Set initial position using left/top for simplicity
+        
+        // Set initial position using left/top for simplicity  
         bubble.style.left = `${startX}px`;
         bubble.style.top = `${startY}px`;
         
