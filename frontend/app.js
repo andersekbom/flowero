@@ -20,7 +20,7 @@ class MQTTVisualizer {
         this.isConnected = false;
         
         // Message tracking
-        this.messageCount = 0;
+        //this.messageCount = 0;
         this.messageRate = 0;
         this.messageHistory = [];
         
@@ -277,7 +277,7 @@ class MQTTVisualizer {
     }
 
     handleMQTTMessage(messageData) {
-        this.messageCount++;
+        //this.messageCount++;
         this.activeTopics.add(messageData.topic);
         
         // Update message history for rate calculation (performance optimization)
@@ -613,7 +613,7 @@ class MQTTVisualizer {
 
     updateStats() {
         // Use cached DOM elements for better performance
-        this.domElements.totalMessages.textContent = this.messageCount;
+        //this.domElements.totalMessages.textContent = this.messageCount;
         this.domElements.messageRate.textContent = this.messageRate.toFixed(1);
         this.domElements.activeTopics.textContent = this.activeTopics.size;
     }
@@ -757,7 +757,7 @@ class MQTTVisualizer {
 
     resetClientState() {
         this.isConnected = false;
-        this.messageCount = 0;
+        //this.messageCount = 0;
         this.activeTopics.clear();
         this.topicColors.clear();
         this.messageHistory = [];
