@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+from contextlib import asynccontextmanager
 from typing import Dict, List, Set, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,16 @@ from mqtt_client import MQTTClientWrapper, ConnectionStatus
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="MQTT Message Visualizer API", version="2.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    app_state.main_loop = asyncio.get_running_loop()
+    logger.info("Main event loop reference saved")
+    yield
+    # Shutdown (if needed)
+    pass
+
+app = FastAPI(title="MQTT Message Visualizer API", version="2.0.0", lifespan=lifespan)
 
 # Enable CORS for React frontend
 app.add_middleware(
@@ -380,12 +390,6 @@ async def websocket_endpoint(websocket: WebSocket):
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
-
-@app.on_event("startup")
-async def startup_event():
-    """Set the main event loop reference for cross-thread communication"""
-    app_state.main_loop = asyncio.get_running_loop()
-    logger.info("Main event loop reference saved")
 
 if __name__ == "__main__":
     import uvicorn

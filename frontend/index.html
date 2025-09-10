@@ -121,7 +121,9 @@
             border-right: 1px solid var(--border-color);
             position: relative;
             transition: width 0.3s ease;
-            overflow: hidden;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
         }
 
         .sidebar.collapsed {
@@ -167,6 +169,9 @@
             padding-top: 60px;
             transition: opacity 0.3s ease;
             min-width: 300px;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .sidebar.collapsed .sidebar-content {
@@ -273,7 +278,7 @@
             padding: 12px 16px;
             border-radius: 20px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            max-width: 250px;
+            max-width: 400px;
             min-width: 180px;
             word-wrap: break-word;
             transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -552,7 +557,7 @@
         }
 
         .modal-content {
-            background: var(--stats-bg);
+            background: var(--sidebar-bg) !important;
             margin: 5% auto;
             padding: 20px;
             border-radius: 20px;
@@ -563,7 +568,7 @@
             border: 1px solid var(--border-color);
             position: relative;
             animation: modalSlideIn 0.3s ease;
-            color: white !important;
+            color: #ffffff !important;
         }
 
         @keyframes modalSlideIn {
@@ -588,7 +593,7 @@
         .modal-title {
             font-size: 18px;
             font-weight: bold;
-            color: white !important;
+            color: #ffffff !important;
         }
 
         .modal-close {
@@ -667,7 +672,7 @@
             <div class="connection-form">
                 <div class="form-group">
                     <label for="host">Broker</label>
-                    <input type="text" id="host" placeholder="broker.emqx.io" value="broker.emqx.io">
+                    <input type="text" id="host" placeholder="connect.prod.youmoni.com" value="connect.prod.youmoni.com">
                 </div>
                 
                 <div class="form-group">
@@ -677,12 +682,12 @@
                 
                 <div class="form-group">
                     <label for="username">Username (Optional)</label>
-                    <input type="text" id="username" placeholder="">
+                    <input type="text" id="username" placeholder="broker" value="broker">
                 </div>
                 
                 <div class="form-group">
                     <label for="password">Password (Optional)</label>
-                    <input type="password" id="password" placeholder="">
+                    <input type="password" id="password" placeholder="password" value="">
                 </div>
                 
                 <button id="connectBtn" onclick="toggleConnection()">Connect</button>

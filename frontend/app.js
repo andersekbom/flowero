@@ -339,46 +339,39 @@ class MQTTVisualizer {
             this.showMessageModal(messageData);
         });
         
-        // Add to DOM first so we can get dimensions (using cached element)
-        this.domElements.messageFlow.appendChild(bubble);
-        
-        // Force layout calculation and get actual dimensions
-        bubble.offsetHeight; // Trigger layout calculation
-        
-        // Get actual dimensions after DOM insertion
+        // Calculate positioning before adding to DOM to prevent flash
         const flowWidth = this.domElements.messageFlow.clientWidth;
-        const bubbleWidth = bubble.offsetWidth;
         
-        // Debug logging
-        //console.log('Container width:', flowWidth, 'Bubble width:', bubbleWidth, 'Bubble actual width:', bubble.getBoundingClientRect().width);
+        // Use the maximum possible card width (400px from CSS) to be absolutely safe
+        const safeCardWidth = 400; // Use CSS max-width value
         
-        // Use the maximum possible card width (250px from CSS) to be absolutely safe
-        const safeCardWidth = 250; // Use CSS max-width value
-        
-        // Calculate maximum allowed X position with hard cap
-        const maxAllowedX = Math.min(flowWidth - safeCardWidth - 20, 750);
+        // Calculate maximum allowed X position
+        const maxAllowedX = flowWidth - safeCardWidth - 20;
         const minX = 20; // 20px margin from left edge
         
         // Ensure we have a valid range for distribution
         const availableRange = maxAllowedX > minX ? maxAllowedX - minX : 0;
         const startX = minX + Math.random() * availableRange;
-        
-        //console.log('MaxAllowedX:', maxAllowedX, 'MinX:', minX, 'AvailableRange:', availableRange, 'StartX:', startX);
-        const startY = -bubble.offsetHeight - 50;
+        const startY = -100; // Start above screen
         
         
-        // Set initial position using left/top for simplicity  
+        // Disable CSS transitions to prevent interference with our manual animation
+        bubble.style.transition = 'none';
+        
+        // Set initial position using left/top before adding to DOM
         bubble.style.left = `${startX}px`;
         bubble.style.top = `${startY}px`;
         
-        // Animate down screen
+        // Now add to DOM with position already set
+        this.domElements.messageFlow.appendChild(bubble);
+        
+        // Start animation from the already-set position
         this.animateMessage(bubble, startX, startY);
         
         // Remove bubble after animation completes
         setTimeout(() => {
             if (bubble.parentNode) {
-                bubble.classList.add('message-exit');
-                setTimeout(() => bubble.remove(), 500);
+                bubble.parentNode.removeChild(bubble);
             }
         }, 8000);
     }
@@ -388,21 +381,22 @@ class MQTTVisualizer {
         const duration = 8000; // 8 seconds to cross screen
         const startTime = Date.now();
         
-        // Use transform for hardware acceleration, keeping X constant
+        // Use top property for animation, keeping left constant
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Animate from top (negative Y) to bottom (positive Y)
+            // Animate from top (negative Y) to bottom (positive Y), keeping X constant
             const currentY = startY + (targetY - startY) * progress;
-            bubble.style.transform = `translate(${startX}px, ${currentY}px)`;
+            bubble.style.top = `${currentY}px`;
             
             if (progress < 1 && bubble.parentNode) {
                 requestAnimationFrame(animate);
             }
         };
         
-        requestAnimationFrame(animate);
+        // Start animation immediately
+        animate();
     }
 
     // Flower visualization - simplified and cleaned up
@@ -793,6 +787,7 @@ class MQTTVisualizer {
             alert('Subscription failed: ' + error.message);
         }
     }
+    
 }
 
 // Global functions for HTML onclick handlers
@@ -817,4 +812,5 @@ function switchTheme() {
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
     visualizer = new MQTTVisualizer();
+    
 });
