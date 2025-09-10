@@ -24,6 +24,15 @@ class MQTTVisualizer {
         this.messageRate = 0;
         this.messageHistory = [];
         
+        // Performance tracking for radial mode
+        this.activeRadialAnimations = 0;
+        this.maxRadialAnimations = 20; // Limit concurrent animations
+        
+        // Frame rate tracking
+        this.frameCount = 0;
+        this.lastFrameTime = Date.now();
+        this.frameRate = 0;
+        
         // Topic and color management
         this.topicColors = new Map();
         this.customerColors = new Map();
@@ -40,6 +49,9 @@ class MQTTVisualizer {
         
         // Initialize all systems
         this.initialize();
+        
+        // Start frame rate monitoring
+        this.startFrameRateMonitoring();
     }
 
     cacheDOMElements() {
@@ -62,6 +74,8 @@ class MQTTVisualizer {
             totalMessages: document.getElementById('totalMessages'),
             messageRate: document.getElementById('messageRate'),
             activeTopics: document.getElementById('activeTopics'),
+            frameRate: document.getElementById('frameRate'),
+            activeCards: document.getElementById('activeCards'),
             
             // Visualization elements
             messageFlow: document.getElementById('messageFlow'),
@@ -309,7 +323,7 @@ class MQTTVisualizer {
     }
 
     createVisualization(messageData) {
-        if (this.visualizationMode === 'bubbles') {
+        if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial' || this.visualizationMode === 'starfield') {
             this.createMessageBubble(messageData);
         } else if (this.visualizationMode === 'flower') {
             this.createFlowerPetal(messageData);
@@ -319,7 +333,7 @@ class MQTTVisualizer {
     // Message Animation
     createMessageBubble(messageData) {
         const bubble = document.createElement('div');
-        bubble.className = 'message-bubble message-enter';
+        bubble.className = 'message-bubble';
         
         // Get or create color for topic
         const color = this.getTopicColor(messageData.topic);
@@ -339,30 +353,51 @@ class MQTTVisualizer {
             this.showMessageModal(messageData);
         });
         
-        // Calculate positioning before adding to DOM to prevent flash
+        // Calculate positioning based on visualization mode
         const flowWidth = this.domElements.messageFlow.clientWidth;
+        const flowHeight = this.domElements.messageFlow.clientHeight;
+        let startX, startY;
         
-        // Use the maximum possible card width (400px from CSS) to be absolutely safe
-        const safeCardWidth = 400; // Use CSS max-width value
+        if (this.visualizationMode === 'radial') {
+            // Radial mode: start at center of screen
+            startX = flowWidth / 2;
+            startY = flowHeight / 2;
+        } else if (this.visualizationMode === 'starfield') {
+            // Starfield mode: start at random location across entire screen
+            startX = Math.random() * flowWidth;
+            startY = Math.random() * flowHeight;
+        } else {
+            // Default bubbles mode: start from top with horizontal distribution
+            const safeCardWidth = 400; // Use CSS max-width value
+            const maxAllowedX = flowWidth - safeCardWidth - 20;
+            const minX = 20; // 20px margin from left edge
+            const availableRange = maxAllowedX > minX ? maxAllowedX - minX : 0;
+            startX = minX + Math.random() * availableRange;
+            startY = -100; // Start above screen
+        }
         
-        // Calculate maximum allowed X position
-        const maxAllowedX = flowWidth - safeCardWidth - 20;
-        const minX = 20; // 20px margin from left edge
+        if (this.visualizationMode === 'radial') {
+            // For radial mode, set initial position and let animateMessage handle transitions
+            bubble.style.transition = 'none';
+            bubble.style.left = `${startX}px`;
+            bubble.style.top = `${startY}px`;
+            bubble.style.opacity = '1';
+            bubble.style.transform = 'scale(1)';
+        } else if (this.visualizationMode === 'starfield') {
+            // For starfield mode, start small and dim
+            bubble.style.transition = 'none';
+            bubble.style.left = `${startX}px`;
+            bubble.style.top = `${startY}px`;
+            bubble.style.opacity = '0.1';
+            bubble.style.transform = 'scale(0.1)';
+        } else {
+            // For bubbles mode, disable transitions for manual animation
+            bubble.style.transition = 'none';
+            bubble.style.left = `${startX}px`;
+            bubble.style.top = `${startY}px`;
+        }
         
-        // Ensure we have a valid range for distribution
-        const availableRange = maxAllowedX > minX ? maxAllowedX - minX : 0;
-        const startX = minX + Math.random() * availableRange;
-        const startY = -100; // Start above screen
-        
-        
-        // Disable CSS transitions to prevent interference with our manual animation
-        bubble.style.transition = 'none';
-        
-        // Set initial position using left/top before adding to DOM
-        bubble.style.left = `${startX}px`;
-        bubble.style.top = `${startY}px`;
-        
-        // Now add to DOM with position already set
+        // Add to DOM with position already set
         this.domElements.messageFlow.appendChild(bubble);
         
         // Start animation from the already-set position
@@ -377,26 +412,104 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble, startX, startY) {
-        const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
-        const duration = 8000; // 8 seconds to cross screen
-        const startTime = Date.now();
+        const duration = 6000; // 6 seconds to cross screen
         
-        // Use top property for animation, keeping left constant
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Animate from top (negative Y) to bottom (positive Y), keeping X constant
-            const currentY = startY + (targetY - startY) * progress;
-            bubble.style.top = `${currentY}px`;
-            
-            if (progress < 1 && bubble.parentNode) {
-                requestAnimationFrame(animate);
+        if (this.visualizationMode === 'radial') {
+            // Limit concurrent animations to prevent crashes
+            if (this.activeRadialAnimations >= this.maxRadialAnimations) {
+                // Remove bubble immediately if too many active
+                if (bubble.parentNode) {
+                    bubble.parentNode.removeChild(bubble);
+                }
+                return;
             }
-        };
-        
-        // Start animation immediately
-        animate();
+            
+            this.activeRadialAnimations++;
+            
+            // Manual radial animation like floating bubbles
+            const startTime = Date.now();
+            const angle = Math.random() * 2 * Math.PI;
+            const distance = 600;
+            const targetX = startX + Math.cos(angle) * distance;
+            const targetY = startY + Math.sin(angle) * distance;
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Animate radially outward
+                const currentX = startX + (targetX - startX) * progress;
+                const currentY = startY + (targetY - startY) * progress;
+                
+                // Calculate fade and scale based on progress
+                const fadeStartPoint = 0.2;
+                const opacity = progress < fadeStartPoint ? 1 : 
+                    Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
+                const scale = Math.max(0.2, 1 - progress * 0.8);
+                
+                bubble.style.left = `${currentX}px`;
+                bubble.style.top = `${currentY}px`;
+                bubble.style.opacity = opacity;
+                bubble.style.transform = `scale(${scale})`;
+                
+                if (progress < 1 && bubble.parentNode) {
+                    requestAnimationFrame(animate);
+                } else {
+                    this.activeRadialAnimations--;
+                }
+            };
+            
+            animate();
+        } else if (this.visualizationMode === 'starfield') {
+            // Starfield animation: grow larger and brighter over time (simulating approach)
+            const startTime = Date.now();
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Calculate scale: grow from 10% to 150% for dramatic depth effect
+                const scale = 0.1 + (progress * 1.4); // 0.1 to 1.5
+                
+                // Calculate opacity: fade in quickly, then fade out near the end
+                let opacity;
+                if (progress < 0.8) {
+                    // Fade in and stay bright for first 80% of animation
+                    opacity = Math.min(1, progress * 2); // Quick fade in
+                } else {
+                    // Fade out in the last 20% (simulating passing by the viewer)
+                    opacity = 1 - ((progress - 0.8) / 0.2);
+                }
+                
+                bubble.style.transform = `scale(${scale})`;
+                bubble.style.opacity = opacity;
+                
+                if (progress < 1 && bubble.parentNode) {
+                    requestAnimationFrame(animate);
+                }
+            };
+            
+            animate();
+        } else {
+            // Default bubbles animation: vertical movement
+            const startTime = Date.now();
+            const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Animate from top (negative Y) to bottom (positive Y), keeping X constant
+                const currentY = startY + (targetY - startY) * progress;
+                bubble.style.top = `${currentY}px`;
+                
+                if (progress < 1 && bubble.parentNode) {
+                    requestAnimationFrame(animate);
+                }
+            };
+            
+            animate();
+        }
     }
 
     // Flower visualization - simplified and cleaned up
@@ -462,7 +575,7 @@ class MQTTVisualizer {
         this.clearAllVisualizations();
         
         // Show/hide appropriate containers using cached elements
-        if (mode === 'bubbles') {
+        if (mode === 'bubbles' || mode === 'radial' || mode === 'starfield') {
             this.domElements.messageFlow.style.display = 'block';
             this.domElements.flowerVisualization.style.display = 'none';
         } else if (mode === 'flower') {
@@ -786,6 +899,35 @@ class MQTTVisualizer {
             console.error('Subscription failed:', error);
             alert('Subscription failed: ' + error.message);
         }
+    }
+    
+    startFrameRateMonitoring() {
+        const updateFrameRate = () => {
+            this.frameCount++;
+            const now = Date.now();
+            const timeDiff = now - this.lastFrameTime;
+            
+            // Update FPS and performance stats every second
+            if (timeDiff >= 1000) {
+                this.frameRate = Math.round((this.frameCount * 1000) / timeDiff);
+                if (this.domElements.frameRate) {
+                    this.domElements.frameRate.textContent = this.frameRate;
+                }
+                
+                // Count active message cards
+                const activeCards = document.querySelectorAll('.message-bubble').length;
+                if (this.domElements.activeCards) {
+                    this.domElements.activeCards.textContent = activeCards;
+                }
+                
+                this.frameCount = 0;
+                this.lastFrameTime = now;
+            }
+            
+            requestAnimationFrame(updateFrameRate);
+        };
+        
+        updateFrameRate();
     }
     
 }
