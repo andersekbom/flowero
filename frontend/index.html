@@ -702,11 +702,13 @@
                 <button id="subscribeBtn" onclick="subscribeToTopic()" disabled>Subscribe</button>
             </div>
 
-            <div class="visualization-selector" style="display: none;">
+            <div class="visualization-selector">
                 <h3>Visualization Mode</h3>
                 <div class="form-group">
                     <select id="visualizationMode" onchange="switchVisualization()">
                         <option value="bubbles">Floating Bubbles</option>
+                        <option value="radial">Radial Burst</option>
+                        <option value="starfield">Starfield</option>
                         <option value="flower">Growing Flower</option>
                     </select>
                 </div>
@@ -755,6 +757,14 @@
                     <div class="stats-item">
                         <span class="stats-label">Connection:</span>
                         <span class="stats-value" id="connectionStatus">Offline</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">FPS:</span>
+                        <span class="stats-value" id="frameRate">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Active Cards:</span>
+                        <span class="stats-value" id="activeCards">0</span>
                     </div>
                 </div>
             </div>
