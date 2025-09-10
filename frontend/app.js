@@ -342,12 +342,15 @@ class MQTTVisualizer {
         // Add to DOM first so we can get dimensions (using cached element)
         this.domElements.messageFlow.appendChild(bubble);
         
-        // Random starting position (top, with more variety in width)
-        const startX = Math.random() * (this.domElements.messageFlow.clientWidth - 300) + 150;
+        // Random starting position (top, with proper bounds checking)
+        const flowWidth = this.domElements.messageFlow.clientWidth;
+        const bubbleWidth = bubble.offsetWidth || 250; // Use actual width or fallback
+        const maxX = Math.max(flowWidth - bubbleWidth - 20, 20); // Ensure minimum margins
+        const startX = Math.random() * maxX + 10; // 10px left margin
         const startY = -bubble.offsetHeight - 50;
         
-        bubble.style.left = `${startX}px`;
-        bubble.style.top = `${startY}px`;
+        // Set initial position using transform for consistency with animation
+        bubble.style.transform = `translate(${startX}px, ${startY}px)`;
         
         // Animate down screen with downward movement
         this.animateMessage(bubble);
@@ -362,18 +365,22 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble) {
-        const startX = parseFloat(bubble.style.left);
-        const startY = parseFloat(bubble.style.top);
+        // Extract position from existing transform
+        const transformStyle = bubble.style.transform;
+        const matches = transformStyle.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+        const startX = matches ? parseFloat(matches[1]) : 0;
+        const startY = matches ? parseFloat(matches[2]) : -100;
+        
         const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
         const duration = 8000; // 8 seconds to cross screen
         const startTime = Date.now();
         
-        // Use transform for better performance instead of changing left/top
+        // Use transform for hardware acceleration
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Use transform for hardware acceleration
+            // Keep X position constant, only animate Y
             const currentY = startY + (targetY - startY) * progress;
             bubble.style.transform = `translate(${startX}px, ${currentY}px)`;
             
