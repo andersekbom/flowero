@@ -537,6 +537,116 @@
         [data-theme="dark"] .message-bubble {
             box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2);
         }
+
+        /* Message details modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: var(--stats-bg);
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            position: relative;
+            animation: modalSlideIn 0.3s ease;
+            color: white !important;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: white !important;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: white !important;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-body {
+            color: white !important;
+        }
+
+        .modal-field {
+            margin-bottom: 15px;
+        }
+
+        .modal-field-label {
+            font-weight: bold;
+            font-size: 14px;
+            color: white !important;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .modal-field-value {
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: white !important;
+            line-height: 1.4;
+        }
+
+        .modal-field-value.large {
+            min-height: 100px;
+        }
+
+        .message-bubble {
+            cursor: pointer;
+        }
+
+        .message-bubble:hover {
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -587,7 +697,7 @@
                 <button id="subscribeBtn" onclick="subscribeToTopic()" disabled>Subscribe</button>
             </div>
 
-            <div class="visualization-selector">
+            <div class="visualization-selector" style="display: none;">
                 <h3>Visualization Mode</h3>
                 <div class="form-group">
                     <select id="visualizationMode" onchange="switchVisualization()">
@@ -611,14 +721,6 @@
                 </div>
             </div>
 
-            <div class="topic-legend">
-                <h3>Active Topics</h3>
-                <div id="topicList">
-                    <div style="opacity: 0.6; font-size: 12px; margin-top: 10px;">
-                        No subscriptions yet
-                    </div>
-                </div>
-            </div>
             </div>
         </div>
 
@@ -659,6 +761,42 @@
             <div class="flower-visualization" id="flowerVisualization" style="display: none;">
                 <div class="flower-container" id="flowerContainer">
                     <div class="flower-center"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Details Modal -->
+    <div id="messageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Message Details</div>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <span class="modal-field-label">Customer</span>
+                    <div id="modalCustomer" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Topic</span>
+                    <div id="modalTopic" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Timestamp</span>
+                    <div id="modalTimestamp" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Payload</span>
+                    <div id="modalPayload" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">QoS</span>
+                    <div id="modalQos" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Retain</span>
+                    <div id="modalRetain" class="modal-field-value"></div>
                 </div>
             </div>
         </div>
