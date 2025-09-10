@@ -446,7 +446,7 @@
             padding: 15px;
             border-radius: 10px;
             min-width: 200px;
-            z-index: 100;
+            z-index: 2000;
             border: 1px solid var(--border-color);
         }
 
@@ -533,7 +533,7 @@
             border-radius: 10px;
             border: 1px solid var(--border-color);
             min-width: 150px;
-            z-index: 90;
+            z-index: 2000;
         }
 
         .legend-title {
@@ -948,7 +948,7 @@
                     </div>
                 </div>
 
-                <div class="stats-panel">
+                <div class="stats-panel" id="statsPanel">
                     <div class="stats-item">
                         <span class="stats-label">Messages/sec:</span>
                         <span class="stats-value" id="messageRate">0.0</span>
