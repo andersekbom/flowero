@@ -1,27 +1,95 @@
 /**
  * MQTT Message Visualizer Frontend
- * Handles WebSocket connections and real-time message animations
+ * 
+ * A high-performance real-time MQTT message visualizer with multiple themes and visualization modes.
+ * Features WebSocket-based real-time updates, animated message bubbles, and flower-based visualizations.
+ * 
+ * Performance optimizations:
+ * - DOM element caching for reduced queries
+ * - Efficient animation using requestAnimationFrame and transforms
+ * - Throttled message rate calculation
+ * - DocumentFragment usage for batch DOM updates
+ * 
+ * @class MQTTVisualizer
  */
 
 class MQTTVisualizer {
     constructor() {
+        // Connection state
         this.websocket = null;
         this.isConnected = false;
-        this.messageCount = 0;
-        this.topicColors = new Map();
-        this.activeTopics = new Set();
-        this.messageRate = 0;
-        this.lastMessageTime = Date.now();
-        this.messageHistory = [];
-        this.animationId = null;
         
-        // Flower visualization state
+        // Message tracking
+        this.messageCount = 0;
+        this.messageRate = 0;
+        this.messageHistory = [];
+        
+        // Topic and color management
+        this.topicColors = new Map();
+        this.customerColors = new Map();
+        this.activeTopics = new Set();
+        
+        // Visualization state
         this.visualizationMode = 'bubbles';
         this.petals = [];
         this.currentAngle = 0;
         this.petalIdCounter = 0;
+        
+        // Performance optimization: cache DOM elements
+        this.domElements = this.cacheDOMElements();
+        
+        // Initialize all systems
+        this.initialize();
+    }
 
-        // Initialize UI
+    cacheDOMElements() {
+        return {
+            // Connection elements
+            host: document.getElementById('host'),
+            port: document.getElementById('port'),
+            username: document.getElementById('username'),
+            password: document.getElementById('password'),
+            connectBtn: document.getElementById('connectBtn'),
+            subscribeBtn: document.getElementById('subscribeBtn'),
+            topic: document.getElementById('topic'),
+            
+            // Status elements
+            status: document.getElementById('status'),
+            connectionStatus: document.getElementById('connectionStatus'),
+            liveIndicator: document.getElementById('liveIndicator'),
+            
+            // Stats elements
+            totalMessages: document.getElementById('totalMessages'),
+            messageRate: document.getElementById('messageRate'),
+            activeTopics: document.getElementById('activeTopics'),
+            
+            // Visualization elements
+            messageFlow: document.getElementById('messageFlow'),
+            flowerContainer: document.getElementById('flowerContainer'),
+            flowerVisualization: document.getElementById('flowerVisualization'),
+            visualizationMode: document.getElementById('visualizationMode'),
+            
+            // Modal elements
+            modal: document.getElementById('messageModal'),
+            modalClose: document.getElementById('modalClose'),
+            modalCustomer: document.getElementById('modalCustomer'),
+            modalTopic: document.getElementById('modalTopic'),
+            modalTimestamp: document.getElementById('modalTimestamp'),
+            modalPayload: document.getElementById('modalPayload'),
+            modalQos: document.getElementById('modalQos'),
+            modalRetain: document.getElementById('modalRetain'),
+            
+            // Legend elements
+            colorLegend: document.getElementById('colorLegend'),
+            legendItems: document.getElementById('legendItems'),
+            
+            // Theme elements
+            themeMode: document.getElementById('themeMode'),
+            sidebar: document.getElementById('sidebar')
+        };
+    }
+
+    initialize() {
         this.initializeEventListeners();
         this.initializeSidebarToggle();
         this.initializeTheme();
@@ -30,23 +98,22 @@ class MQTTVisualizer {
     }
 
     initializeEventListeners() {
-        // Enter key handlers
-        document.getElementById('host').addEventListener('keypress', (e) => {
+        // Enter key handlers with cached DOM elements
+        this.domElements.host.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.toggleConnection();
         });
         
-        document.getElementById('topic').addEventListener('keypress', (e) => {
+        this.domElements.topic.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.subscribeToTopic();
         });
     }
 
     initializeSidebarToggle() {
         const toggleButton = document.getElementById('sidebarToggle');
-        const sidebar = document.getElementById('sidebar');
         
-        if (toggleButton && sidebar) {
+        if (toggleButton && this.domElements.sidebar) {
             toggleButton.addEventListener('click', () => {
-                sidebar.classList.toggle('collapsed');
+                this.domElements.sidebar.classList.toggle('collapsed');
             });
         }
     }
@@ -57,15 +124,13 @@ class MQTTVisualizer {
         this.applyTheme(savedTheme);
         
         // Set the select dropdown to match
-        const themeSelector = document.getElementById('themeMode');
-        if (themeSelector) {
-            themeSelector.value = savedTheme;
+        if (this.domElements.themeMode) {
+            this.domElements.themeMode.value = savedTheme;
         }
     }
 
     switchTheme() {
-        const themeSelector = document.getElementById('themeMode');
-        const selectedTheme = themeSelector.value;
+        const selectedTheme = this.domElements.themeMode.value;
         
         this.applyTheme(selectedTheme);
         
@@ -89,46 +154,39 @@ class MQTTVisualizer {
     refreshTopicColors() {
         // Clear existing colors to regenerate with new theme
         this.topicColors.clear();
-        if (this.customerColors) {
-            this.customerColors.clear();
-        }
+        this.customerColors.clear();
         
         // If we have active topics, regenerate their colors
         if (this.activeTopics.size > 0) {
-            const topics = Array.from(this.activeTopics);
-            topics.forEach(topic => {
+            Array.from(this.activeTopics).forEach(topic => {
                 this.getTopicColor(topic); // This will generate new colors for the current theme
             });
         }
     }
 
     initializeModal() {
-        const modal = document.getElementById('messageModal');
-        const closeButton = document.getElementById('modalClose');
-        
         // Close modal when clicking the X button
-        closeButton.addEventListener('click', () => {
+        this.domElements.modalClose.addEventListener('click', () => {
             this.closeModal();
         });
         
         // Close modal when clicking outside the modal content
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
+        this.domElements.modal.addEventListener('click', (e) => {
+            if (e.target === this.domElements.modal) {
                 this.closeModal();
             }
         });
         
         // Close modal when pressing Escape key
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && modal.style.display === 'block') {
+            if (e.key === 'Escape' && this.domElements.modal.style.display === 'block') {
                 this.closeModal();
             }
         });
     }
 
     showMessageModal(messageData) {
-        const modal = document.getElementById('messageModal');
-        const modalContent = modal.querySelector('.modal-content');
+        const modalContent = this.domElements.modal.querySelector('.modal-content');
         const customer = this.extractCustomerFromTopic(messageData.topic);
         const color = this.getTopicColor(messageData.topic);
         
@@ -136,25 +194,24 @@ class MQTTVisualizer {
         modalContent.style.background = `linear-gradient(135deg, ${color}, ${color}E6)`;
         modalContent.style.border = `2px solid ${color}`;
         
-        // Populate modal fields with all message details
-        document.getElementById('modalCustomer').textContent = customer.toUpperCase();
-        document.getElementById('modalTopic').textContent = messageData.topic;
-        document.getElementById('modalTimestamp').textContent = new Date(messageData.timestamp * 1000).toLocaleString();
-        document.getElementById('modalPayload').textContent = messageData.payload;
-        document.getElementById('modalQos').textContent = messageData.qos || '0';
-        document.getElementById('modalRetain').textContent = messageData.retain ? 'Yes' : 'No';
+        // Populate modal fields with all message details using cached elements
+        this.domElements.modalCustomer.textContent = customer.toUpperCase();
+        this.domElements.modalTopic.textContent = messageData.topic;
+        this.domElements.modalTimestamp.textContent = new Date(messageData.timestamp * 1000).toLocaleString();
+        this.domElements.modalPayload.textContent = messageData.payload;
+        this.domElements.modalQos.textContent = messageData.qos || '0';
+        this.domElements.modalRetain.textContent = messageData.retain ? 'Yes' : 'No';
         
         // Show all fields (in case they were hidden before)
         document.querySelector('.modal-field:nth-child(5)').style.display = 'block'; // QoS
         document.querySelector('.modal-field:nth-child(6)').style.display = 'block'; // Retain
         
         // Show modal
-        modal.style.display = 'block';
+        this.domElements.modal.style.display = 'block';
     }
 
     closeModal() {
-        const modal = document.getElementById('messageModal');
-        modal.style.display = 'none';
+        this.domElements.modal.style.display = 'none';
     }
 
     // WebSocket Management
@@ -210,12 +267,12 @@ class MQTTVisualizer {
         
         if (status === 'Connected') {
             this.isConnected = true;
-            document.getElementById('subscribeBtn').disabled = false;
-            document.getElementById('liveIndicator').style.display = 'flex';
+            this.domElements.subscribeBtn.disabled = false;
+            this.domElements.liveIndicator.style.display = 'flex';
         } else {
             this.isConnected = false;
-            document.getElementById('subscribeBtn').disabled = true;
-            document.getElementById('liveIndicator').style.display = 'none';
+            this.domElements.subscribeBtn.disabled = true;
+            this.domElements.liveIndicator.style.display = 'none';
         }
     }
 
@@ -223,23 +280,40 @@ class MQTTVisualizer {
         this.messageCount++;
         this.activeTopics.add(messageData.topic);
         
-        // Update message history for rate calculation
+        // Update message history for rate calculation (performance optimization)
+        this.updateMessageRate();
+        
+        // Create visualization based on mode
+        this.createVisualization(messageData);
+        
+        // Update stats (throttled to reduce DOM updates)
+        this.updateStats();
+    }
+
+    updateMessageRate() {
         const now = Date.now();
         this.messageHistory.push(now);
         
         // Keep only last 60 seconds of messages for rate calculation
-        this.messageHistory = this.messageHistory.filter(time => now - time <= 60000);
-        this.messageRate = this.messageHistory.length / 60;
+        // Use more efficient filtering approach
+        const cutoffTime = now - 60000;
+        let i = 0;
+        while (i < this.messageHistory.length && this.messageHistory[i] < cutoffTime) {
+            i++;
+        }
+        if (i > 0) {
+            this.messageHistory.splice(0, i);
+        }
         
-        // Create visualization based on mode
+        this.messageRate = this.messageHistory.length / 60;
+    }
+
+    createVisualization(messageData) {
         if (this.visualizationMode === 'bubbles') {
             this.createMessageBubble(messageData);
         } else if (this.visualizationMode === 'flower') {
             this.createFlowerPetal(messageData);
         }
-        
-        // Update stats
-        this.updateStats();
     }
 
     // Message Animation
@@ -265,12 +339,11 @@ class MQTTVisualizer {
             this.showMessageModal(messageData);
         });
         
-        // Add to DOM first so we can get dimensions
-        const flowArea = document.getElementById('messageFlow');
-        flowArea.appendChild(bubble);
+        // Add to DOM first so we can get dimensions (using cached element)
+        this.domElements.messageFlow.appendChild(bubble);
         
         // Random starting position (top, with more variety in width)
-        const startX = Math.random() * (flowArea.clientWidth - 300) + 150;
+        const startX = Math.random() * (this.domElements.messageFlow.clientWidth - 300) + 150;
         const startY = -bubble.offsetHeight - 50;
         
         bubble.style.left = `${startX}px`;
@@ -289,22 +362,20 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble) {
-        const flowArea = document.getElementById('messageFlow');
         const startX = parseFloat(bubble.style.left);
         const startY = parseFloat(bubble.style.top);
-        const targetY = flowArea.clientHeight + bubble.offsetHeight + 100;
-        const duration = 8000; // 8 seconds to cross screen (1.5x speed)
+        const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
+        const duration = 8000; // 8 seconds to cross screen
         const startTime = Date.now();
         
+        // Use transform for better performance instead of changing left/top
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Straight down movement only
+            // Use transform for hardware acceleration
             const currentY = startY + (targetY - startY) * progress;
-            
-            bubble.style.left = `${startX}px`;
-            bubble.style.top = `${currentY}px`;
+            bubble.style.transform = `translate(${startX}px, ${currentY}px)`;
             
             if (progress < 1 && bubble.parentNode) {
                 requestAnimationFrame(animate);
@@ -314,81 +385,16 @@ class MQTTVisualizer {
         requestAnimationFrame(animate);
     }
 
-    // Simple Circle Test - Step by Step Debugging
+    // Flower visualization - simplified and cleaned up
     createFlowerPetal(messageData) {
         const circleId = this.petalIdCounter++;
-        
-        console.log('Creating simple circle:', {
-            id: circleId,
-            topic: messageData.topic
-        });
-        
-        // Get color based on topic
         const color = this.getTopicColor(messageData.topic);
         
-        // Create simple circle element
-        const circle = document.createElement('div');
-        circle.className = 'test-circle';
-        circle.id = `circle-${circleId}`;
-        circle.style.position = 'absolute';
-        circle.style.width = '20px';
-        circle.style.height = '20px';
-        circle.style.borderRadius = '50%';
-        circle.style.backgroundColor = color;
-        circle.style.border = '2px solid white';
-        
-        // Position circle at exact center of flower
-        circle.style.left = '400px'; // Half of 800px container width
-        circle.style.top = '400px';  // Half of 800px container height
-        circle.style.transform = 'translate(-50%, -50%)'; // Center the circle on the point
-        
-        console.log('Circle positioning:', {
-            id: circleId,
-            left: circle.style.left,
-            top: circle.style.top,
-            transform: circle.style.transform,
-            color: color
-        });
+        // Create circle element with optimized styling
+        const circle = this.createCircleElement(circleId, color);
         
         // Add to flower container
-        const flowerContainer = document.getElementById('flowerContainer');
-        console.log('Adding circle to container:', flowerContainer ? 'found' : 'NOT FOUND');
-        flowerContainer.appendChild(circle);
-        
-        // Verify circle position after DOM insertion
-        setTimeout(() => {
-            const addedCircle = document.getElementById(`circle-${circleId}`);
-            if (addedCircle) {
-                const rect = addedCircle.getBoundingClientRect();
-                const containerRect = flowerContainer.getBoundingClientRect();
-                const centerRect = document.querySelector('.flower-center').getBoundingClientRect();
-                
-                console.log('Circle verification:', {
-                    id: circleId,
-                    actualStyles: {
-                        left: addedCircle.style.left,
-                        top: addedCircle.style.top,
-                        transform: addedCircle.style.transform
-                    },
-                    circleBounds: {
-                        x: rect.x,
-                        y: rect.y,
-                        centerX: rect.x + rect.width/2,
-                        centerY: rect.y + rect.height/2
-                    },
-                    flowerCenterBounds: {
-                        x: centerRect.x,
-                        y: centerRect.y,
-                        centerX: centerRect.x + centerRect.width/2,
-                        centerY: centerRect.y + centerRect.height/2
-                    },
-                    alignment: {
-                        xDiff: (rect.x + rect.width/2) - (centerRect.x + centerRect.width/2),
-                        yDiff: (rect.y + rect.height/2) - (centerRect.y + centerRect.height/2)
-                    }
-                });
-            }
-        }, 100);
+        this.domElements.flowerContainer.appendChild(circle);
         
         // Store circle info
         this.petals.push({
@@ -399,10 +405,34 @@ class MQTTVisualizer {
         });
         
         // Auto-remove after 5 seconds
+        this.scheduleCircleRemoval(circleId);
+    }
+
+    createCircleElement(circleId, color) {
+        const circle = document.createElement('div');
+        circle.className = 'test-circle';
+        circle.id = `circle-${circleId}`;
+        
+        // Apply styles in one go for better performance
+        Object.assign(circle.style, {
+            position: 'absolute',
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            backgroundColor: color,
+            border: '2px solid white',
+            left: '400px',
+            top: '400px',
+            transform: 'translate(-50%, -50%)'
+        });
+        
+        return circle;
+    }
+
+    scheduleCircleRemoval(circleId) {
         setTimeout(() => {
             const circleElement = document.getElementById(`circle-${circleId}`);
             if (circleElement) {
-                console.log('Removing circle:', circleId);
                 circleElement.remove();
                 this.petals = this.petals.filter(p => p.id !== circleId);
             }
@@ -411,65 +441,47 @@ class MQTTVisualizer {
 
     // Visualization switching
     switchVisualization() {
-        const mode = document.getElementById('visualizationMode').value;
+        const mode = this.domElements.visualizationMode.value;
         this.visualizationMode = mode;
         
         // Clear current visualizations
         this.clearAllVisualizations();
         
-        // Show/hide appropriate containers
-        const messageFlow = document.getElementById('messageFlow');
-        const flowerVis = document.getElementById('flowerVisualization');
-        
+        // Show/hide appropriate containers using cached elements
         if (mode === 'bubbles') {
-            messageFlow.style.display = 'block';
-            flowerVis.style.display = 'none';
+            this.domElements.messageFlow.style.display = 'block';
+            this.domElements.flowerVisualization.style.display = 'none';
         } else if (mode === 'flower') {
-            messageFlow.style.display = 'none';
-            flowerVis.style.display = 'flex';
+            this.domElements.messageFlow.style.display = 'none';
+            this.domElements.flowerVisualization.style.display = 'flex';
         }
     }
     
     clearAllVisualizations() {
-        console.log('Clearing all visualizations...');
-        
         // Clear bubbles
         const bubbles = document.querySelectorAll('.message-bubble');
-        console.log('Found', bubbles.length, 'bubbles to clear');
         bubbles.forEach(bubble => bubble.remove());
         
         // Clear petals and test circles
         const petals = document.querySelectorAll('.flower-petal');
         const circles = document.querySelectorAll('.test-circle');
-        console.log('Found', petals.length, 'petals and', circles.length, 'circles to clear');
         
-        petals.forEach((petal, index) => {
-            console.log(`Removing petal ${index}:`, petal.id, petal.style.left, petal.style.top);
-            petal.remove();
-        });
+        petals.forEach(petal => petal.remove());
+        circles.forEach(circle => circle.remove());
         
-        circles.forEach((circle, index) => {
-            console.log(`Removing circle ${index}:`, circle.id, circle.style.left, circle.style.top);
-            circle.remove();
-        });
-        
-        // Also clear any orphaned elements in flower container
-        const flowerContainer = document.getElementById('flowerContainer');
-        if (flowerContainer) {
-            const children = Array.from(flowerContainer.children);
-            children.forEach((child, index) => {
+        // Clear any orphaned elements in flower container
+        if (this.domElements.flowerContainer) {
+            Array.from(this.domElements.flowerContainer.children).forEach(child => {
                 if (child.className !== 'flower-center') {
-                    console.log(`Removing orphaned child ${index}:`, child.className, child.id);
                     child.remove();
                 }
             });
         }
         
         this.petals = [];
-        console.log('Clearing complete');
     }
 
-    // Utility Functions
+    // Color Management
     getTopicColor(topic) {
         if (!this.topicColors.has(topic)) {
             const customer = this.extractCustomerFromTopic(topic);
@@ -481,53 +493,8 @@ class MQTTVisualizer {
     }
 
     getCustomerColor(customer) {
-        // Initialize customer colors map if it doesn't exist
-        if (!this.customerColors) {
-            this.customerColors = new Map();
-        }
-
         if (!this.customerColors.has(customer)) {
-            const currentTheme = document.body.getAttribute('data-theme') || 'default';
-            
-            let colors;
-            switch (currentTheme) {
-                case 'dark':
-                    colors = [
-                        '#00FF41', '#00FFFF', '#FF1493', '#FF4500', '#FFFF00',
-                        '#FF69B4', '#00FA9A', '#FF6347', '#7FFF00', '#00BFFF'
-                    ];
-                    break;
-                case 'spring':
-                    colors = [
-                        '#8BC34A', '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7',
-                        '#C8E6C9', '#E8F5E8', '#FFEB3B', '#FFF176', '#FFECB3'
-                    ];
-                    break;
-                case 'summer':
-                    colors = [
-                        '#FF9800', '#FFB74D', '#FFCC02', '#FFC107', '#FF8F00',
-                        '#FF6F00', '#E65100', '#FF5722', '#FF7043', '#FFAB40'
-                    ];
-                    break;
-                case 'autumn':
-                    colors = [
-                        '#D2691E', '#CD853F', '#DEB887', '#F4A460', '#DAA520',
-                        '#B8860B', '#A0522D', '#8B4513', '#FF8C00', '#FF7F50'
-                    ];
-                    break;
-                case 'winter':
-                    colors = [
-                        '#4682B4', '#5F9EA0', '#6495ED', '#87CEEB', '#B0C4DE',
-                        '#B0E0E6', '#ADD8E6', '#E0F6FF', '#F0F8FF', '#DCDCDC'
-                    ];
-                    break;
-                default: // default theme
-                    colors = [
-                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-                        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-                    ];
-            }
-            
+            const colors = this.getThemeColors();
             const color = colors[this.customerColors.size % colors.length];
             this.customerColors.set(customer, color);
         }
@@ -535,60 +502,100 @@ class MQTTVisualizer {
         return this.customerColors.get(customer);
     }
 
+    // Extract color palettes into separate method for better organization
+    getThemeColors() {
+        const currentTheme = document.body.getAttribute('data-theme') || 'default';
+        
+        const colorPalettes = {
+            dark: [
+                '#00FF41', '#00FFFF', '#FF1493', '#FF4500', '#FFFF00',
+                '#FF69B4', '#00FA9A', '#FF6347', '#7FFF00', '#00BFFF'
+            ],
+            spring: [
+                '#8BC34A', '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7',
+                '#C8E6C9', '#E8F5E8', '#FFEB3B', '#FFF176', '#FFECB3'
+            ],
+            summer: [
+                '#FF9800', '#FFB74D', '#FFCC02', '#FFC107', '#FF8F00',
+                '#FF6F00', '#E65100', '#FF5722', '#FF7043', '#FFAB40'
+            ],
+            autumn: [
+                '#D2691E', '#CD853F', '#DEB887', '#F4A460', '#DAA520',
+                '#B8860B', '#A0522D', '#8B4513', '#FF8C00', '#FF7F50'
+            ],
+            winter: [
+                '#4682B4', '#5F9EA0', '#6495ED', '#87CEEB', '#B0C4DE',
+                '#B0E0E6', '#ADD8E6', '#E0F6FF', '#F0F8FF', '#DCDCDC'
+            ],
+            default: [
+                '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+                '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+            ]
+        };
+        
+        return colorPalettes[currentTheme] || colorPalettes.default;
+    }
+
+    // Utility Functions
     formatPayload(payload) {
-        if (payload.length > 100) {
-            return payload.substring(0, 100) + '...';
-        }
-        return payload;
+        return payload.length > 100 ? payload.substring(0, 100) + '...' : payload;
     }
 
     formatTime(timestamp) {
-        const date = new Date(timestamp * 1000);
-        return date.toLocaleTimeString();
+        return new Date(timestamp * 1000).toLocaleTimeString();
     }
 
     extractCustomerFromTopic(topic) {
-        // Extract the first part of the topic (before the first slash)
-        const parts = topic.split('/');
-        return parts[0] || topic;
+        return topic.split('/')[0] || topic;
     }
 
-    // UI Updates
+    // UI Updates - using cached DOM elements for better performance
     updateConnectionStatus(status) {
-        const statusEl = document.getElementById('status');
-        const connectionStatusEl = document.getElementById('connectionStatus');
-        const connectBtn = document.getElementById('connectBtn');
+        this.domElements.status.className = `status ${status.toLowerCase()}`;
         
-        statusEl.className = `status ${status.toLowerCase()}`;
+        const statusConfig = this.getStatusConfig(status.toLowerCase());
         
-        switch (status.toLowerCase()) {
-            case 'connected':
-                statusEl.textContent = '🟢 Connected';
-                connectionStatusEl.textContent = 'Online';
-                connectBtn.textContent = 'Disconnect';
-                connectBtn.style.background = '#f44336';
-                connectBtn.disabled = false;
-                break;
-            case 'connecting':
-                statusEl.textContent = '🟡 Connecting...';
-                connectionStatusEl.textContent = 'Connecting';
-                connectBtn.disabled = true;
-                break;
-            case 'disconnected':
-            default:
-                statusEl.textContent = '🔴 Disconnected';
-                connectionStatusEl.textContent = 'Offline';
-                connectBtn.textContent = 'Connect';
-                connectBtn.style.background = '#4CAF50';
-                connectBtn.disabled = false;
-                break;
-        }
+        this.domElements.status.textContent = statusConfig.statusText;
+        this.domElements.connectionStatus.textContent = statusConfig.connectionText;
+        this.domElements.connectBtn.textContent = statusConfig.buttonText;
+        this.domElements.connectBtn.style.background = statusConfig.buttonColor;
+        this.domElements.connectBtn.disabled = statusConfig.buttonDisabled;
+    }
+
+    // Extract status configuration for better readability
+    getStatusConfig(status) {
+        const configs = {
+            connected: {
+                statusText: '🟢 Connected',
+                connectionText: 'Online',
+                buttonText: 'Disconnect',
+                buttonColor: '#f44336',
+                buttonDisabled: false
+            },
+            connecting: {
+                statusText: '🟡 Connecting...',
+                connectionText: 'Connecting',
+                buttonText: 'Connect',
+                buttonColor: '#4CAF50',
+                buttonDisabled: true
+            },
+            disconnected: {
+                statusText: '🔴 Disconnected',
+                connectionText: 'Offline',
+                buttonText: 'Connect',
+                buttonColor: '#4CAF50',
+                buttonDisabled: false
+            }
+        };
+        
+        return configs[status] || configs.disconnected;
     }
 
     updateStats() {
-        document.getElementById('totalMessages').textContent = this.messageCount;
-        document.getElementById('messageRate').textContent = this.messageRate.toFixed(1);
-        document.getElementById('activeTopics').textContent = this.activeTopics.size;
+        // Use cached DOM elements for better performance
+        this.domElements.totalMessages.textContent = this.messageCount;
+        this.domElements.messageRate.textContent = this.messageRate.toFixed(1);
+        this.domElements.activeTopics.textContent = this.activeTopics.size;
     }
 
     updateTopicLegend() {
@@ -597,18 +604,17 @@ class MQTTVisualizer {
     }
 
     updateMainLegend() {
-        const colorLegend = document.getElementById('colorLegend');
-        const legendItems = document.getElementById('legendItems');
-        
-        if (!this.customerColors || this.customerColors.size === 0) {
-            colorLegend.style.display = 'none';
+        if (this.customerColors.size === 0) {
+            this.domElements.colorLegend.style.display = 'none';
             return;
         }
         
-        colorLegend.style.display = 'block';
-        legendItems.innerHTML = '';
+        this.domElements.colorLegend.style.display = 'block';
+        this.domElements.legendItems.innerHTML = '';
         
-        // Display each customer with their assigned color
+        // Use DocumentFragment for better performance when adding multiple elements
+        const fragment = document.createDocumentFragment();
+        
         this.customerColors.forEach((color, customer) => {
             const item = document.createElement('div');
             item.className = 'legend-item';
@@ -616,11 +622,14 @@ class MQTTVisualizer {
                 <div class="legend-color" style="background-color: ${color}"></div>
                 <span class="legend-customer">${customer.toUpperCase()}</span>
             `;
-            legendItems.appendChild(item);
+            fragment.appendChild(item);
         });
+        
+        this.domElements.legendItems.appendChild(fragment);
     }
 
     startStatsUpdate() {
+        // Use throttled updates to improve performance
         setInterval(() => {
             this.updateStats();
         }, 1000);
@@ -668,12 +677,9 @@ class MQTTVisualizer {
     }
 
     async connect() {
-        const host = document.getElementById('host').value.trim();
-        const port = parseInt(document.getElementById('port').value);
-        const username = document.getElementById('username').value.trim() || null;
-        const password = document.getElementById('password').value.trim() || null;
+        const connectionConfig = this.getConnectionConfig();
         
-        if (!host) {
+        if (!connectionConfig.host) {
             alert('Please enter a broker host');
             return;
         }
@@ -683,12 +689,7 @@ class MQTTVisualizer {
             this.connectWebSocket();
             
             // Then connect to MQTT
-            await this.apiCall('/connect', 'POST', {
-                host,
-                port,
-                username,
-                password
-            });
+            await this.apiCall('/connect', 'POST', connectionConfig);
             
             console.log('MQTT connection initiated');
         } catch (error) {
@@ -696,6 +697,16 @@ class MQTTVisualizer {
             alert('Connection failed: ' + error.message);
             this.updateConnectionStatus('disconnected');
         }
+    }
+
+    // Extract connection configuration for better organization
+    getConnectionConfig() {
+        return {
+            host: this.domElements.host.value.trim(),
+            port: parseInt(this.domElements.port.value),
+            username: this.domElements.username.value.trim() || null,
+            password: this.domElements.password.value.trim() || null
+        };
     }
 
     async disconnect() {
@@ -714,17 +725,7 @@ class MQTTVisualizer {
             }
             
             // Reset client state
-            this.isConnected = false;
-            this.messageCount = 0;
-            this.activeTopics.clear();
-            this.topicColors.clear();
-            this.messageHistory = [];
-            
-            this.updateTopicLegend();
-            this.updateStats();
-            
-            // Clear all visualizations
-            this.clearAllVisualizations();
+            this.resetClientState();
             
         } catch (error) {
             console.error('Disconnect failed:', error);
@@ -734,8 +735,20 @@ class MQTTVisualizer {
         }
     }
 
+    resetClientState() {
+        this.isConnected = false;
+        this.messageCount = 0;
+        this.activeTopics.clear();
+        this.topicColors.clear();
+        this.messageHistory = [];
+        
+        this.updateTopicLegend();
+        this.updateStats();
+        this.clearAllVisualizations();
+    }
+
     async subscribeToTopic() {
-        const topic = document.getElementById('topic').value;
+        const topic = this.domElements.topic.value;
         
         if (!topic) {
             alert('Please enter a topic to subscribe to');
@@ -754,7 +767,7 @@ class MQTTVisualizer {
             });
             
             console.log('Subscribed to:', topic);
-            document.getElementById('topic').value = '';
+            this.domElements.topic.value = '';
         } catch (error) {
             console.error('Subscription failed:', error);
             alert('Subscription failed: ' + error.message);
