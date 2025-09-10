@@ -28,6 +28,9 @@ class MQTTVisualizer {
         this.activeRadialAnimations = 0;
         this.maxRadialAnimations = 20; // Limit concurrent animations
         
+        // Z-index tracking for depth layering
+        this.messageZIndex = 1000; // Start with high z-index
+        
         // Frame rate tracking
         this.frameCount = 0;
         this.lastFrameTime = Date.now();
@@ -81,7 +84,10 @@ class MQTTVisualizer {
             messageFlow: document.getElementById('messageFlow'),
             flowerContainer: document.getElementById('flowerContainer'),
             flowerVisualization: document.getElementById('flowerVisualization'),
-            visualizationMode: document.getElementById('visualizationMode'),
+            
+            // Visualization mode buttons
+            vizIconButtons: document.querySelectorAll('.viz-icon-btn'),
+            vizModeButtons: document.querySelectorAll('.viz-mode-btn'),
             
             // Modal elements
             modal: document.getElementById('messageModal'),
@@ -106,6 +112,7 @@ class MQTTVisualizer {
     initialize() {
         this.initializeEventListeners();
         this.initializeSidebarToggle();
+        this.initializeVisualizationButtons();
         this.initializeTheme();
         this.initializeModal();
         this.startStatsUpdate();
@@ -130,6 +137,24 @@ class MQTTVisualizer {
                 this.domElements.sidebar.classList.toggle('collapsed');
             });
         }
+    }
+    
+    initializeVisualizationButtons() {
+        // Add click handlers for collapsed sidebar visualization icons
+        this.domElements.vizIconButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                this.switchVisualization(mode);
+            });
+        });
+        
+        // Add click handlers for expanded sidebar visualization buttons
+        this.domElements.vizModeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                this.switchVisualization(mode);
+            });
+        });
     }
 
     initializeTheme() {
@@ -363,9 +388,12 @@ class MQTTVisualizer {
             startX = flowWidth / 2;
             startY = flowHeight / 2;
         } else if (this.visualizationMode === 'starfield') {
-            // Starfield mode: start at random location across entire screen
-            startX = Math.random() * flowWidth;
-            startY = Math.random() * flowHeight;
+            // Starfield mode: start in larger area around center for better spread
+            const centerX = flowWidth / 2;
+            const centerY = flowHeight / 2;
+            const maxOffset = 100; // Larger area for more spread
+            startX = centerX + (Math.random() - 0.3) * maxOffset;
+            startY = centerY + (Math.random() - 0.3) * maxOffset;
         } else {
             // Default bubbles mode: start from top with horizontal distribution
             const safeCardWidth = 400; // Use CSS max-width value
@@ -397,6 +425,10 @@ class MQTTVisualizer {
             bubble.style.top = `${startY}px`;
         }
         
+        // Set z-index for depth layering (newer cards behind older ones)
+        bubble.style.zIndex = this.messageZIndex;
+        this.messageZIndex--; // Each new card gets a lower z-index
+        
         // Add to DOM with position already set
         this.domElements.messageFlow.appendChild(bubble);
         
@@ -412,7 +444,7 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble, startX, startY) {
-        const duration = 6000; // 6 seconds to cross screen
+        const duration = 10000; // 8 seconds to cross screen
         
         if (this.visualizationMode === 'radial') {
             // Limit concurrent animations to prevent crashes
@@ -441,16 +473,15 @@ class MQTTVisualizer {
                 const currentX = startX + (targetX - startX) * progress;
                 const currentY = startY + (targetY - startY) * progress;
                 
-                // Calculate fade and scale based on progress
+                // Calculate fade based on progress (no scaling)
                 const fadeStartPoint = 0.2;
                 const opacity = progress < fadeStartPoint ? 1 : 
                     Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
-                const scale = Math.max(0.2, 1 - progress * 0.8);
                 
                 bubble.style.left = `${currentX}px`;
                 bubble.style.top = `${currentY}px`;
                 bubble.style.opacity = opacity;
-                bubble.style.transform = `scale(${scale})`;
+                bubble.style.transform = 'none'; // Remove any scaling
                 
                 if (progress < 1 && bubble.parentNode) {
                     requestAnimationFrame(animate);
@@ -461,30 +492,75 @@ class MQTTVisualizer {
             
             animate();
         } else if (this.visualizationMode === 'starfield') {
-            // Starfield animation: grow larger and brighter over time (simulating approach)
+            // Starfield animation: parallax effect with outward movement
             const startTime = Date.now();
+            const centerX = this.domElements.messageFlow.clientWidth / 2;
+            const centerY = this.domElements.messageFlow.clientHeight / 2;
+            
+            // Calculate direction from center to starting position
+            const deltaX = startX - centerX;
+            const deltaY = startY - centerY;
+            
+            // Calculate distance from center for variable speed
+            const distanceFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const maxDistance = 10 // Maximum starting distance from center
+            const distanceRatio = Math.min(distanceFromCenter / maxDistance, 1);
+            
+            // Variable movement: ensure cards can move well off screen
+            const baseMovement = 1400; // Much larger movement distance to guarantee off-screen travel
+            const movementDistance = baseMovement;
+            
+            // Avoid division by zero for cards exactly at center
+            const targetX = distanceFromCenter > 0 ? startX + (deltaX / distanceFromCenter) * movementDistance : startX + movementDistance;
+            const targetY = distanceFromCenter > 0 ? startY + (deltaY / distanceFromCenter) * movementDistance : startY;
             
             const animate = () => {
                 const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
+                const baseProgress = elapsed / duration; // Base time progress
                 
-                // Calculate scale: grow from 10% to 150% for dramatic depth effect
-                const scale = 0.1 + (progress * 1.4); // 0.1 to 1.5
+                // Calculate current distance from center based on current position
+                const currentX = startX + (targetX - startX) * baseProgress;
+                const currentY = startY + (targetY - startY) * baseProgress;
+                const currentDistanceFromCenter = Math.sqrt((currentX - centerX) * (currentX - centerX) + (currentY - centerY) * (currentY - centerY));
+                const maxScreenDistance = Math.sqrt((centerX * centerX) + (centerY * centerY));
+                const currentDistanceRatio = Math.min(currentDistanceFromCenter / maxScreenDistance, 1);
                 
-                // Calculate opacity: fade in quickly, then fade out near the end
+                // Speed factor based on distance from center (slower near center, faster at edges)
+                const speedFactor = 0.3 + (currentDistanceRatio * 2); // 0.3x to 2.0x speed
+                
+                // Calculate movement with variable speed
+                const speedAdjustedMovement = baseProgress * speedFactor;
+                
+                // Final position with speed adjustment
+                const finalX = startX + (targetX - startX) * speedAdjustedMovement;
+                const finalY = startY + (targetY - startY) * speedAdjustedMovement;
+                
+                // Scale effect: start small and grow larger (simulating approach)
+                const scale = 0.2 + (Math.min(baseProgress, 1) * 2); // 0.2 to 2.0, bigger final size
+                
+                // Opacity: fade in quickly, stay visible, then fade out
                 let opacity;
-                if (progress < 0.8) {
-                    // Fade in and stay bright for first 80% of animation
-                    opacity = Math.min(1, progress * 2); // Quick fade in
+                const clampedProgress = Math.min(baseProgress, 1); // Clamp opacity calculations to 0-1 range
+                if (clampedProgress < 0.1) {
+                    opacity = clampedProgress * 20; // Quick fade in
+                } else if (clampedProgress < 0.7) {
+                    opacity = 1; // Stay visible
                 } else {
-                    // Fade out in the last 20% (simulating passing by the viewer)
-                    opacity = 1 - ((progress - 0.8) / 0.2);
+                    opacity = 1 - ((clampedProgress - 0.6) / 0.3); // Fade out
                 }
                 
+                bubble.style.left = `${finalX}px`;
+                bubble.style.top = `${finalY}px`;
                 bubble.style.transform = `scale(${scale})`;
                 bubble.style.opacity = opacity;
                 
-                if (progress < 1 && bubble.parentNode) {
+                // Continue animation until card is off screen
+                const flowWidth = this.domElements.messageFlow.clientWidth;
+                const flowHeight = this.domElements.messageFlow.clientHeight;
+                const isOffScreen = (finalX < -400 || finalX > flowWidth + 400 || 
+                                   finalY < -400 || finalY > flowHeight + 400);
+                
+                if (!isOffScreen && bubble.parentNode) {
                     requestAnimationFrame(animate);
                 }
             };
@@ -493,7 +569,7 @@ class MQTTVisualizer {
         } else {
             // Default bubbles animation: vertical movement
             const startTime = Date.now();
-            const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
+            const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 300;
             
             const animate = () => {
                 const elapsed = Date.now() - startTime;
@@ -567,9 +643,17 @@ class MQTTVisualizer {
     }
 
     // Visualization switching
-    switchVisualization() {
-        const mode = this.domElements.visualizationMode.value;
+    switchVisualization(mode) {
+        if (!mode) {
+            // If no mode provided, get from current active button
+            const activeBtn = document.querySelector('.viz-icon-btn.active, .viz-mode-btn.active');
+            mode = activeBtn ? activeBtn.dataset.mode : 'bubbles';
+        }
+        
         this.visualizationMode = mode;
+        
+        // Update active states for both icon and mode buttons
+        this.updateVisualizationButtonStates(mode);
         
         // Clear current visualizations
         this.clearAllVisualizations();
@@ -578,10 +662,39 @@ class MQTTVisualizer {
         if (mode === 'bubbles' || mode === 'radial' || mode === 'starfield') {
             this.domElements.messageFlow.style.display = 'block';
             this.domElements.flowerVisualization.style.display = 'none';
+            
+            // Add space background only for starfield mode
+            if (mode === 'starfield') {
+                this.domElements.messageFlow.classList.add('starfield-mode');
+            } else {
+                this.domElements.messageFlow.classList.remove('starfield-mode');
+            }
         } else if (mode === 'flower') {
             this.domElements.messageFlow.style.display = 'none';
             this.domElements.flowerVisualization.style.display = 'flex';
+            this.domElements.messageFlow.classList.remove('starfield-mode');
         }
+    }
+    
+    // Update active states for visualization buttons
+    updateVisualizationButtonStates(activeMode) {
+        // Update icon buttons (collapsed sidebar)
+        this.domElements.vizIconButtons.forEach(btn => {
+            if (btn.dataset.mode === activeMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        
+        // Update mode buttons (expanded sidebar)
+        this.domElements.vizModeButtons.forEach(btn => {
+            if (btn.dataset.mode === activeMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
     }
     
     clearAllVisualizations() {
@@ -754,6 +867,7 @@ class MQTTVisualizer {
         
         this.domElements.legendItems.appendChild(fragment);
     }
+
 
     startStatsUpdate() {
         // Use throttled updates to improve performance
