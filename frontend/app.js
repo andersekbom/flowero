@@ -349,11 +349,12 @@ class MQTTVisualizer {
         const startX = Math.random() * maxX + 10; // 10px left margin
         const startY = -bubble.offsetHeight - 50;
         
-        // Set initial position using transform for consistency with animation
-        bubble.style.transform = `translate(${startX}px, ${startY}px)`;
+        // Set initial position using left/top for simplicity
+        bubble.style.left = `${startX}px`;
+        bubble.style.top = `${startY}px`;
         
-        // Animate down screen with downward movement
-        this.animateMessage(bubble);
+        // Animate down screen
+        this.animateMessage(bubble, startX, startY);
         
         // Remove bubble after animation completes
         setTimeout(() => {
@@ -364,23 +365,17 @@ class MQTTVisualizer {
         }, 8000);
     }
 
-    animateMessage(bubble) {
-        // Extract position from existing transform
-        const transformStyle = bubble.style.transform;
-        const matches = transformStyle.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
-        const startX = matches ? parseFloat(matches[1]) : 0;
-        const startY = matches ? parseFloat(matches[2]) : -100;
-        
+    animateMessage(bubble, startX, startY) {
         const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 100;
         const duration = 8000; // 8 seconds to cross screen
         const startTime = Date.now();
         
-        // Use transform for hardware acceleration
+        // Use transform for hardware acceleration, keeping X constant
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Keep X position constant, only animate Y
+            // Animate from top (negative Y) to bottom (positive Y)
             const currentY = startY + (targetY - startY) * progress;
             bubble.style.transform = `translate(${startX}px, ${currentY}px)`;
             
