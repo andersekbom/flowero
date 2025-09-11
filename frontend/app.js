@@ -30,6 +30,8 @@ class MQTTVisualizer {
         
         // Z-index tracking for depth layering
         this.messageZIndex = 1000; // Start with high z-index
+        this.maxZIndex = 1000; // Maximum z-index value
+        this.minZIndex = 1; // Minimum z-index value (prevent going to 0 or negative)
         
         // Frame rate tracking
         this.frameCount = 0;
@@ -394,12 +396,9 @@ class MQTTVisualizer {
             startX = flowWidth / 2;
             startY = flowHeight / 2;
         } else if (this.visualizationMode === 'starfield') {
-            // Starfield mode: start in larger area around center for better spread
-            const centerX = flowWidth / 2;
-            const centerY = flowHeight / 2;
-            const maxOffset = 100; // Larger area for more spread
-            startX = centerX + (Math.random() - 0.5) * maxOffset;
-            startY = centerY + (Math.random() - 0.5) * maxOffset;
+            // Starfield mode: start all cards at exact center
+            startX = flowWidth / 2;
+            startY = flowHeight / 2;
         } else {
             // Default bubbles mode: start from top with horizontal distribution
             const safeCardWidth = 400; // Use CSS max-width value
@@ -433,7 +432,7 @@ class MQTTVisualizer {
         
         // Set z-index for depth layering (newer cards behind older ones)
         bubble.style.zIndex = this.messageZIndex;
-        this.messageZIndex--; // Each new card gets a lower z-index
+        this.getNextZIndex(); // Update messageZIndex with bounds checking
         
         // Add to DOM with position already set
         this.domElements.messageFlow.appendChild(bubble);
@@ -450,8 +449,8 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble, startX, startY) {
-        const duration = 10000; // 8 seconds to cross screen
-        
+        const duration = 12000; // 12 seconds to cross screen
+
         if (this.visualizationMode === 'radial') {
             // Limit concurrent animations to prevent crashes
             if (this.activeRadialAnimations >= this.maxRadialAnimations) {
@@ -498,76 +497,71 @@ class MQTTVisualizer {
             
             animate();
         } else if (this.visualizationMode === 'starfield') {
-            // Starfield animation: parallax effect with outward movement
-            const startTime = Date.now();
+            // Starfield animation: simple distance-based physics
             const centerX = this.domElements.messageFlow.clientWidth / 2;
             const centerY = this.domElements.messageFlow.clientHeight / 2;
             
-            // Calculate direction from center to starting position
-            const deltaX = startX - centerX;
-            const deltaY = startY - centerY;
+            // Generate random direction
+            const angle = Math.random() * 2 * Math.PI;
+            const directionX = Math.cos(angle);
+            const directionY = Math.sin(angle);
             
-            // Calculate distance from center for variable speed
-            const distanceFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const maxDistance = 100 // Maximum starting distance from center (matches maxOffset)
-            const distanceRatio = Math.min(distanceFromCenter / maxDistance, 1);
-            
-            // Variable movement: ensure cards can move well off screen
-            const baseMovement = 1400; // Much larger movement distance to guarantee off-screen travel
-            const movementDistance = baseMovement;
-            
-            // Avoid division by zero for cards exactly at center
-            const targetX = distanceFromCenter > 0 ? startX + (deltaX / distanceFromCenter) * movementDistance : startX + movementDistance;
-            const targetY = distanceFromCenter > 0 ? startY + (deltaY / distanceFromCenter) * movementDistance : startY;
+            // Animation state
+            let currentDistance = 0; // Start at center (distance = 0)
+            const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY) * 1.5; // Go well off screen
+            const startTime = Date.now();
+            const maxDuration = 12000; // 12 second timeout (slower velocity)
             
             const animate = () => {
                 const elapsed = Date.now() - startTime;
-                const baseProgress = elapsed / duration; // Base time progress
                 
-                // Calculate current distance from center based on current position
-                const currentX = startX + (targetX - startX) * baseProgress;
-                const currentY = startY + (targetY - startY) * baseProgress;
-                const currentDistanceFromCenter = Math.sqrt((currentX - centerX) * (currentX - centerX) + (currentY - centerY) * (currentY - centerY));
-                const maxScreenDistance = Math.sqrt((centerX * centerX) + (centerY * centerY));
-                const currentDistanceRatio = Math.min(currentDistanceFromCenter / maxScreenDistance, 1);
-                
-                // Speed factor based on distance from center (slower near center, faster at edges)
-                const speedFactor = 0.3 + (currentDistanceRatio * 2); // 0.3x to 2.0x speed
-                
-                // Calculate movement with variable speed, but cap it to prevent cards from jumping off-screen immediately
-                const speedAdjustedMovement = Math.min(baseProgress * speedFactor, 1.0);
-                
-                // Final position with speed adjustment
-                const finalX = startX + (targetX - startX) * speedAdjustedMovement;
-                const finalY = startY + (targetY - startY) * speedAdjustedMovement;
-                
-                // Scale effect: start small and grow larger (simulating approach)
-                const scale = 0.1 + (Math.min(baseProgress, 1) * 2.5); // 0.1 to 2.0, bigger final size
+                // Calculate distance from center with acceleration (quadratic growth for starfield effect)
+                const timeRatio = Math.min(elapsed / maxDuration, 1);
 
+                //currentDistance = timeRatio * timeRatio * maxDistance; // Quadratic: slow start, fast finish
+                const intensity = 8; // Higher = more dramatic
+                currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
+
+                // Position based on distance and direction
+                const currentX = centerX + (directionX * currentDistance);
+                const currentY = centerY + (directionY * currentDistance);
+                
+                // Size based on distance (further = bigger)
+                const minScale = 0.1;
+                const maxScale = 6.0;
+                const distanceRatio = Math.min(currentDistance / maxDistance, 1);
+                const scale = minScale + (distanceRatio * distanceRatio * (maxScale - minScale)); // Quadratic growth
+                
+                // Velocity based on distance (further = faster movement per frame)
+                // This is implicit in the distance calculation above
+                
                 // Opacity: fade in quickly, stay visible, then fade out
                 let opacity;
-                const clampedProgress = Math.min(baseProgress, 1); // Clamp opacity calculations to 0-1 range
-                if (clampedProgress < 0.1) {
-                    opacity = clampedProgress * 20; // Quick fade in
-                } else if (clampedProgress < 0.7) {
+                if (distanceRatio < 0.1) {
+                    opacity = distanceRatio * 50; // Quick fade in
+                } else if (distanceRatio < 0.7) {
                     opacity = 1; // Stay visible
                 } else {
-                    opacity = 1 - ((clampedProgress - 0.6) / 0.3); // Fade out
+                    opacity = Math.max(0, 1 - ((distanceRatio - 0.7) / 0.1)); // Fade out
                 }
                 
-                bubble.style.left = `${finalX}px`;
-                bubble.style.top = `${finalY}px`;
+                // Update DOM
+                bubble.style.left = `${currentX}px`;
+                bubble.style.top = `${currentY}px`;
                 bubble.style.transform = `scale(${scale})`;
                 bubble.style.opacity = opacity;
                 
-                // Continue animation until card is off screen
+                // Check if card should be removed (off screen or timeout)
                 const flowWidth = this.domElements.messageFlow.clientWidth;
                 const flowHeight = this.domElements.messageFlow.clientHeight;
-                const isOffScreen = (finalX < -400 || finalX > flowWidth + 400 || 
-                                   finalY < -400 || finalY > flowHeight + 400);
+                const isOffScreen = (currentX < -200 || currentX > flowWidth + 200 || 
+                                   currentY < -200 || currentY > flowHeight + 200);
                 
-                if (!isOffScreen && bubble.parentNode) {
+                if (elapsed < maxDuration && !isOffScreen && bubble.parentNode) {
                     requestAnimationFrame(animate);
+                } else if (bubble.parentNode) {
+                    // Remove card when off screen or timeout reached
+                    bubble.parentNode.removeChild(bubble);
                 }
             };
             
@@ -786,6 +780,17 @@ class MQTTVisualizer {
         };
         
         return colorPalettes[currentTheme] || colorPalettes.default;
+    }
+
+    // Z-index management with bounds checking
+    getNextZIndex() {
+        // Decrement z-index for depth layering (newer cards behind older ones)
+        this.messageZIndex--;
+        
+        // Reset to max when hitting minimum to prevent overflow
+        if (this.messageZIndex < this.minZIndex) {
+            this.messageZIndex = this.maxZIndex;
+        }
     }
 
     // Utility Functions
