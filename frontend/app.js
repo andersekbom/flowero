@@ -26,7 +26,7 @@ class MQTTVisualizer {
         
         // Performance tracking for radial mode
         this.activeRadialAnimations = 0;
-        this.maxRadialAnimations = 20; // Limit concurrent animations
+        this.maxRadialAnimations = 100; // Limit concurrent animations
         
         // Z-index tracking for depth layering
         this.messageZIndex = 1000; // Start with high z-index
@@ -446,7 +446,7 @@ class MQTTVisualizer {
             if (bubble.parentNode) {
                 bubble.parentNode.removeChild(bubble);
             }
-        }, 8000);
+        }, 12000);
     }
 
     animateMessage(bubble, startX, startY) {
@@ -509,7 +509,7 @@ class MQTTVisualizer {
             
             // Calculate distance from center for variable speed
             const distanceFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const maxDistance = 10 // Maximum starting distance from center
+            const maxDistance = 100 // Maximum starting distance from center (matches maxOffset)
             const distanceRatio = Math.min(distanceFromCenter / maxDistance, 1);
             
             // Variable movement: ensure cards can move well off screen
@@ -534,8 +534,8 @@ class MQTTVisualizer {
                 // Speed factor based on distance from center (slower near center, faster at edges)
                 const speedFactor = 0.3 + (currentDistanceRatio * 2); // 0.3x to 2.0x speed
                 
-                // Calculate movement with variable speed
-                const speedAdjustedMovement = baseProgress * speedFactor;
+                // Calculate movement with variable speed, but cap it to prevent cards from jumping off-screen immediately
+                const speedAdjustedMovement = Math.min(baseProgress * speedFactor, 1.0);
                 
                 // Final position with speed adjustment
                 const finalX = startX + (targetX - startX) * speedAdjustedMovement;
@@ -669,16 +669,22 @@ class MQTTVisualizer {
             this.domElements.messageFlow.style.display = 'block';
             this.domElements.flowerVisualization.style.display = 'none';
             
-            // Add space background only for starfield mode
+            // Add specific classes for different modes
             if (mode === 'starfield') {
                 this.domElements.messageFlow.classList.add('starfield-mode');
+                this.domElements.messageFlow.classList.remove('radial-mode');
+            } else if (mode === 'radial') {
+                this.domElements.messageFlow.classList.add('radial-mode');
+                this.domElements.messageFlow.classList.remove('starfield-mode');
             } else {
                 this.domElements.messageFlow.classList.remove('starfield-mode');
+                this.domElements.messageFlow.classList.remove('radial-mode');
             }
         } else if (mode === 'flower') {
             this.domElements.messageFlow.style.display = 'none';
             this.domElements.flowerVisualization.style.display = 'flex';
             this.domElements.messageFlow.classList.remove('starfield-mode');
+            this.domElements.messageFlow.classList.remove('radial-mode');
         }
     }
     
