@@ -320,7 +320,7 @@
         /* Space background for starfield mode */
         .message-flow.starfield-mode {
             background: 
-                linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)),
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
                 url('stars.jpg') center/cover no-repeat;
         }
 
@@ -408,6 +408,36 @@
             word-wrap: break-word;
             transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             z-index: 10;
+        }
+
+        /* Circular bubble styling for radial mode */
+        .radial-mode .message-bubble {
+            border-radius: 50%;
+            width: 200px;
+            height: 200px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            max-width: none;
+            min-width: none;
+        }
+
+        .radial-mode .message-customer {
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+
+        .radial-mode .message-topic {
+            font-size: 8px;
+            margin-bottom: 4px;
+        }
+
+        .radial-mode .message-time {
+            font-size: 8px;
+            margin-top: 2px;
         }
 
         .message-customer {
@@ -777,6 +807,10 @@
             transform: scale(1.02);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
         }
+
+        .theme-selector {
+            margin-top: 30px;
+        }
     </style>
 </head>
 <body>
@@ -800,15 +834,9 @@
                 </div>
                 <div class="viz-icon-btn" data-mode="radial" data-tooltip="Radial Burst">
                     <svg viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="2"/>
-                        <path d="M12 1v6"/>
-                        <path d="M12 17v6"/>
-                        <path d="M4.22 4.22l4.24 4.24"/>
-                        <path d="M15.54 15.54l4.24 4.24"/>
-                        <path d="M1 12h6"/>
-                        <path d="M17 12h6"/>
-                        <path d="M4.22 19.78l4.24-4.24"/>
-                        <path d="M15.54 8.46l4.24-4.24"/>
+                        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
                     </svg>
                 </div>
                 <div class="viz-icon-btn" data-mode="starfield" data-tooltip="Starfield">
@@ -820,14 +848,6 @@
                         <circle cx="4" cy="19" r="1"/>
                     </svg>
                 </div>
-                <!--<div class="viz-icon-btn" data-mode="flower" data-tooltip="Growing Flower">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 22c-1.1 0-2-.9-2-2V8.5c0-.3.2-.5.5-.5s.5.2.5.5V20c0 .6.4 1 1 1s1-.4 1-1V8.5c0-.3.2-.5.5-.5s.5.2.5.5V20c0 1.1-.9 2-2 2z"/>
-                        <path d="M12 8c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                        <path d="M8 10c-1.1 0-2-.9-2-2 0-.6.2-1.1.6-1.4C7.2 6.2 8 6 8.8 6.2c.8.2 1.4.8 1.6 1.6.2.8 0 1.6-.6 2.2-.4.4-.9.6-1.4.6z"/>
-                        <path d="M16 10c-.5 0-1-.2-1.4-.6-.6-.6-.8-1.4-.6-2.2.2-.8.8-1.4 1.6-1.6.8-.2 1.6 0 2.2.6.4.3.6.8.6 1.4 0 1.1-.9 2-2 2z"/>
-                    </svg>
-                </div>-->
             </div>
             <div class="sidebar-content">
                 <h1>Flowero</h1>
@@ -879,19 +899,13 @@
                             <circle cx="12" cy="18" r="3"/>
                             <circle cx="8" cy="14" r="2"/>
                         </svg>
-                        <span>Falling Bubbles</span>
+                        <span>Falling Boxes</span>
                     </div>
                     <div class="viz-mode-btn" data-mode="radial">
                         <svg viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="2"/>
-                            <path d="M12 1v6"/>
-                            <path d="M12 17v6"/>
-                            <path d="M4.22 4.22l4.24 4.24"/>
-                            <path d="M15.54 15.54l4.24 4.24"/>
-                            <path d="M1 12h6"/>
-                            <path d="M17 12h6"/>
-                            <path d="M4.22 19.78l4.24-4.24"/>
-                            <path d="M15.54 8.46l4.24-4.24"/>
+                            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
                         </svg>
                         <span>Radial Burst</span>
                     </div>
@@ -905,15 +919,6 @@
                         </svg>
                         <span>Starfield</span>
                     </div>
-                    <!-- <div class="viz-mode-btn" data-mode="flower">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M12 22c-1.1 0-2-.9-2-2V8.5c0-.3.2-.5.5-.5s.5.2.5.5V20c0 .6.4 1 1 1s1-.4 1-1V8.5c0-.3.2-.5.5-.5s.5.2.5.5V20c0 1.1-.9 2-2 2z"/>
-                            <path d="M12 8c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                            <path d="M8 10c-1.1 0-2-.9-2-2 0-.6.2-1.1.6-1.4C7.2 6.2 8 6 8.8 6.2c.8.2 1.4.8 1.6 1.6.2.8 0 1.6-.6 2.2-.4.4-.9.6-1.4.6z"/>
-                            <path d="M16 10c-.5 0-1-.2-1.4-.6-.6-.6-.8-1.4-.6-2.2.2-.8.8-1.4 1.6-1.6.8-.2 1.6 0 2.2.6.4.3.6.8.6 1.4 0 1.1-.9 2-2 2z"/>
-                        </svg>
-                        <span>Growing Flower</span>
-                    </div>-->
                 </div>
             </div>
 
