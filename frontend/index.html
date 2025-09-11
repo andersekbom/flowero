@@ -319,9 +319,44 @@
 
         /* Space background for starfield mode */
         .message-flow.starfield-mode {
-            background: 
-                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-                url('stars.jpg') center/cover no-repeat;
+            position: relative;
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7));
+        }
+        
+        .message-flow.starfield-mode::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('stars.jpg') center/cover no-repeat;
+            background-size: 100% 100%;
+            z-index: -1;
+            animation: starfieldZoom 20s linear infinite;
+        }
+        
+        @keyframes starfieldZoom {
+            0% {
+                background-size: 100% 100%;
+                opacity: 1;
+            }
+            94% {
+                background-size: 200% 200%;
+                opacity: 1;
+            }
+            95% {
+                background-size: 200% 200%;
+                opacity: 0;
+            }
+            95.1% {
+                background-size: 100% 100%;
+                opacity: 0;
+            }
+            100% {
+                background-size: 100% 100%;
+                opacity: 1;
+            }
         }
 
 

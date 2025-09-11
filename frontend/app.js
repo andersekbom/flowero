@@ -49,6 +49,9 @@ class MQTTVisualizer {
         this.currentAngle = 0;
         this.petalIdCounter = 0;
         
+        // Direction control for bubbles mode
+        this.bubbleDirection = { x: 0, y: 1 }; // Default: downward
+        
         // Performance optimization: cache DOM elements
         this.domElements = this.cacheDOMElements();
         
@@ -131,6 +134,30 @@ class MQTTVisualizer {
         
         this.domElements.topic.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.subscribeToTopic();
+        });
+        
+        // Cursor key handlers for controlling bubble direction
+        document.addEventListener('keydown', (e) => {
+            if (this.visualizationMode === 'bubbles') {
+                switch(e.key) {
+                    case 'ArrowUp':
+                        this.bubbleDirection = { x: 0, y: -1 };
+                        e.preventDefault();
+                        break;
+                    case 'ArrowDown':
+                        this.bubbleDirection = { x: 0, y: 1 };
+                        e.preventDefault();
+                        break;
+                    case 'ArrowLeft':
+                        this.bubbleDirection = { x: -1, y: 0 };
+                        e.preventDefault();
+                        break;
+                    case 'ArrowRight':
+                        this.bubbleDirection = { x: 1, y: 0 };
+                        e.preventDefault();
+                        break;
+                }
+            }
         });
     }
 
@@ -370,7 +397,7 @@ class MQTTVisualizer {
         
         // Get or create color for topic
         const color = this.getTopicColor(messageData.topic);
-        bubble.style.background = `linear-gradient(135deg, ${color}AA, ${color}DD)`;
+        bubble.style.background = `linear-gradient(135deg, ${color}, ${color}E6)`;
         bubble.style.border = `2px solid ${color}`;
         
         // Create message content
@@ -400,13 +427,27 @@ class MQTTVisualizer {
             startX = flowWidth / 2;
             startY = flowHeight / 2;
         } else {
-            // Default bubbles mode: start from top with horizontal distribution
+            // Default bubbles mode: start from opposite side of movement direction
             const safeCardWidth = 400; // Use CSS max-width value
-            const maxAllowedX = flowWidth - safeCardWidth - 20;
-            const minX = 20; // 20px margin from left edge
-            const availableRange = maxAllowedX > minX ? maxAllowedX - minX : 0;
-            startX = minX + Math.random() * availableRange;
-            startY = -100; // Start above screen
+            const margin = 20;
+            
+            if (this.bubbleDirection.y === -1) {
+                // Moving up: start from bottom
+                startX = margin + Math.random() * (flowWidth - safeCardWidth - 2 * margin);
+                startY = flowHeight + 100;
+            } else if (this.bubbleDirection.y === 1) {
+                // Moving down: start from top
+                startX = margin + Math.random() * (flowWidth - safeCardWidth - 2 * margin);
+                startY = -100;
+            } else if (this.bubbleDirection.x === -1) {
+                // Moving left: start from right
+                startX = flowWidth + 100;
+                startY = margin + Math.random() * (flowHeight - 2 * margin);
+            } else if (this.bubbleDirection.x === 1) {
+                // Moving right: start from left
+                startX = -safeCardWidth - 100;
+                startY = margin + Math.random() * (flowHeight - 2 * margin);
+            }
         }
         
         if (this.visualizationMode === 'radial') {
@@ -417,12 +458,12 @@ class MQTTVisualizer {
             bubble.style.opacity = '1';
             bubble.style.transform = 'scale(1)';
         } else if (this.visualizationMode === 'starfield') {
-            // For starfield mode, start small and dim
+            // For starfield mode, start small and transparent
             bubble.style.transition = 'none';
             bubble.style.left = `${startX}px`;
             bubble.style.top = `${startY}px`;
             bubble.style.opacity = '0.1';
-            bubble.style.transform = 'scale(0.1)';
+            bubble.style.transform = 'scale(0.3)';
         } else {
             // For bubbles mode, disable transitions for manual animation
             bubble.style.transition = 'none';
@@ -445,11 +486,11 @@ class MQTTVisualizer {
             if (bubble.parentNode) {
                 bubble.parentNode.removeChild(bubble);
             }
-        }, 12000);
+        }, 15000);
     }
 
     animateMessage(bubble, startX, startY) {
-        const duration = 12000; // 12 seconds to cross screen
+        const duration = 15000; // 15 seconds to cross screen
 
         if (this.visualizationMode === 'radial') {
             // Limit concurrent animations to prevent crashes
@@ -463,22 +504,27 @@ class MQTTVisualizer {
             
             this.activeRadialAnimations++;
             
-            // Manual radial animation like floating bubbles
+            // Manual radial animation with random angles
             const startTime = Date.now();
             const angle = Math.random() * 2 * Math.PI;
-            const distance = 600;
-            const targetX = startX + Math.cos(angle) * distance;
-            const targetY = startY + Math.sin(angle) * distance;
+            const maxDistance = 600;
+            const targetX = startX + Math.cos(angle) * maxDistance;
+            const targetY = startY + Math.sin(angle) * maxDistance;
             
             const animate = () => {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 
-                // Animate radially outward
+                // Animate straight outward in assigned direction
                 const currentX = startX + (targetX - startX) * progress;
                 const currentY = startY + (targetY - startY) * progress;
                 
-                // Calculate fade based on progress (no scaling)
+                // Calculate scaling based on progress (start small, grow larger)
+                const minScale = 0.3;
+                const maxScale = 1.5;
+                const scale = minScale + (progress * (maxScale - minScale));
+                
+                // Calculate fade based on progress
                 const fadeStartPoint = 0.2;
                 const opacity = progress < fadeStartPoint ? 1 : 
                     Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
@@ -486,7 +532,7 @@ class MQTTVisualizer {
                 bubble.style.left = `${currentX}px`;
                 bubble.style.top = `${currentY}px`;
                 bubble.style.opacity = opacity;
-                bubble.style.transform = 'none'; // Remove any scaling
+                bubble.style.transform = `scale(${scale})`;
                 
                 if (progress < 1 && bubble.parentNode) {
                     requestAnimationFrame(animate);
@@ -498,8 +544,9 @@ class MQTTVisualizer {
             animate();
         } else if (this.visualizationMode === 'starfield') {
             // Starfield animation: simple distance-based physics
-            const centerX = this.domElements.messageFlow.clientWidth / 2;
-            const centerY = this.domElements.messageFlow.clientHeight / 2;
+            // Use the same center calculation as initial positioning
+            const centerX = startX;
+            const centerY = startY;
             
             // Generate random direction
             const angle = Math.random() * 2 * Math.PI;
@@ -508,10 +555,19 @@ class MQTTVisualizer {
             
             // Animation state
             let currentDistance = 0; // Start at center (distance = 0)
-            const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY) * 1.5; // Go well off screen
+            // Calculate dynamic max distance based on window size
+            const flowWidth = this.domElements.messageFlow.clientWidth;
+            const flowHeight = this.domElements.messageFlow.clientHeight;
+            // Distance from center to corner of screen (this is the furthest any card needs to travel)
+            const maxScreenDistance = Math.sqrt((flowWidth/2) * (flowWidth/2) + (flowHeight/2) * (flowHeight/2));
+            // Add buffer to account for card size and ensure cards move completely off screen
+            // Cards can be up to 400px wide and grow up to 8x scale, so need significant buffer
+            const cardMaxSize = 400 * 8; // max card width * max scale
+            const buffer = cardMaxSize / 2; // Half the max card size should be enough
+            const maxDistance = maxScreenDistance + buffer + 200;
             const startTime = Date.now();
-            const maxDuration = 12000; // 12 second timeout (slower velocity)
-            
+            const maxDuration = 15000; // 10 second timeout (slower velocity)
+
             const animate = () => {
                 const elapsed = Date.now() - startTime;
                 
@@ -522,27 +578,43 @@ class MQTTVisualizer {
                 const intensity = 8; // Higher = more dramatic
                 currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
 
+                //  1. Cubic (x³) - More dramatic:
+                //  currentDistance = timeRatio * timeRatio * timeRatio * maxDistance; // x³
+                //            
+                //  2. Quartic (x⁴) - Very dramatic:
+                //  currentDistance = Math.pow(timeRatio, 4) * maxDistance; // x⁴
+                //            
+                //  3. Exponential - Extremely dramatic:
+                //  // Cards barely move for most of the time, then explode outward
+                //  currentDistance = (Math.exp(timeRatio * 3) - 1) / (Math.exp(3) - 1) * maxDistance;
+                //            
+                //  4. Custom exponential with adjustable intensity:
+                //  const intensity = 5; // Higher = more dramatic
+                //  currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
+                //            
+                //  5. Smooth exponential transition:
+                //  // Very slow start, then rapid acceleration
+                //  currentDistance = (Math.exp(timeRatio * 4) - 1) / (Math.exp(4) - 1) * maxDistance;
+
                 // Position based on distance and direction
                 const currentX = centerX + (directionX * currentDistance);
                 const currentY = centerY + (directionY * currentDistance);
                 
                 // Size based on distance (further = bigger)
-                const minScale = 0.1;
-                const maxScale = 6.0;
+                const minScale = 0.3;
+                const maxScale = 10.0;
                 const distanceRatio = Math.min(currentDistance / maxDistance, 1);
                 const scale = minScale + (distanceRatio * distanceRatio * (maxScale - minScale)); // Quadratic growth
                 
                 // Velocity based on distance (further = faster movement per frame)
                 // This is implicit in the distance calculation above
                 
-                // Opacity: fade in quickly, stay visible, then fade out
+                // Opacity: fade in quickly during first part of animation, then stay fully visible
                 let opacity;
-                if (distanceRatio < 0.1) {
-                    opacity = distanceRatio * 50; // Quick fade in
-                } else if (distanceRatio < 0.7) {
-                    opacity = 1; // Stay visible
+                if (distanceRatio < 0.02) {
+                    opacity = distanceRatio * 50; // Very quick fade in (2% of journey)
                 } else {
-                    opacity = Math.max(0, 1 - ((distanceRatio - 0.7) / 0.1)); // Fade out
+                    opacity = 1; // Stay fully visible for the rest of the journey
                 }
                 
                 // Update DOM
@@ -554,8 +626,10 @@ class MQTTVisualizer {
                 // Check if card should be removed (off screen or timeout)
                 const flowWidth = this.domElements.messageFlow.clientWidth;
                 const flowHeight = this.domElements.messageFlow.clientHeight;
-                const isOffScreen = (currentX < -200 || currentX > flowWidth + 200 || 
-                                   currentY < -200 || currentY > flowHeight + 200);
+                const cardMaxSize = 400 * 8; // max card width * max scale
+                const buffer = cardMaxSize / 2; // Buffer to account for card size
+                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
+                                   currentY < -buffer || currentY > flowHeight + buffer);
                 
                 if (elapsed < maxDuration && !isOffScreen && bubble.parentNode) {
                     requestAnimationFrame(animate);
@@ -567,19 +641,43 @@ class MQTTVisualizer {
             
             animate();
         } else {
-            // Default bubbles animation: vertical movement
+            // Default bubbles animation: directional movement controlled by cursor keys
             const startTime = Date.now();
-            const targetY = this.domElements.messageFlow.clientHeight + bubble.offsetHeight + 300;
+            const flowWidth = this.domElements.messageFlow.clientWidth;
+            const flowHeight = this.domElements.messageFlow.clientHeight;
+            // Calculate dynamic travel distance based on screen size and direction
+            const buffer = 500;
+            let targetX, targetY;
+            
+            if (this.bubbleDirection.x !== 0) {
+                // Horizontal movement: travel across full width plus buffer
+                const travelDistance = flowWidth + buffer * 2;
+                targetX = startX + (this.bubbleDirection.x * travelDistance);
+                targetY = startY; // No vertical movement
+            } else {
+                // Vertical movement: travel across full height plus buffer
+                const travelDistance = flowHeight + buffer * 2;
+                targetX = startX; // No horizontal movement
+                targetY = startY + (this.bubbleDirection.y * travelDistance);
+            }
             
             const animate = () => {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 
-                // Animate from top (negative Y) to bottom (positive Y), keeping X constant
+                // Animate in the controlled direction
+                const currentX = startX + (targetX - startX) * progress;
                 const currentY = startY + (targetY - startY) * progress;
+                
+                bubble.style.left = `${currentX}px`;
                 bubble.style.top = `${currentY}px`;
                 
-                if (progress < 1 && bubble.parentNode) {
+                // Check if off screen with larger buffer to let boxes fully exit
+                const buffer = 500;
+                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
+                                   currentY < -buffer || currentY > flowHeight + buffer);
+                
+                if (progress < 1 && !isOffScreen && bubble.parentNode) {
                     requestAnimationFrame(animate);
                 }
             };
