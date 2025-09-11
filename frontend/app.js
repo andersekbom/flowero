@@ -2,7 +2,7 @@
  * MQTT Message Visualizer Frontend
  * 
  * A high-performance real-time MQTT message visualizer with multiple themes and visualization modes.
- * Features WebSocket-based real-time updates, animated message bubbles, and flower-based visualizations.
+ * Features WebSocket-based real-time updates and animated message visualizations.
  * 
  * Performance optimizations:
  * - DOM element caching for reduced queries
@@ -38,6 +38,17 @@ class MQTTVisualizer {
         this.lastFrameTime = Date.now();
         this.frameRate = 0;
         
+        // Performance optimizations
+        this.animationFramePool = new Set();
+        this.bubblePool = [];
+        this.maxPoolSize = 50;
+        this.activeAnimations = new Map();
+        
+        // Browser compatibility
+        this.hasIntersectionObserver = 'IntersectionObserver' in window;
+        this.hasRequestIdleCallback = 'requestIdleCallback' in window;
+        this.supportsPassiveListeners = this.detectPassiveSupport();
+        
         // Topic and color management
         this.topicColors = new Map();
         this.customerColors = new Map();
@@ -45,9 +56,7 @@ class MQTTVisualizer {
         
         // Visualization state
         this.visualizationMode = 'bubbles';
-        this.petals = [];
         this.currentAngle = 0;
-        this.petalIdCounter = 0;
         
         // Direction control for bubbles mode
         this.bubbleDirection = { x: 0, y: 1 }; // Default: downward
@@ -77,6 +86,8 @@ class MQTTVisualizer {
             status: document.getElementById('status'),
             connectionStatus: document.getElementById('connectionStatus'),
             liveIndicator: document.getElementById('liveIndicator'),
+            brokerUrlDisplay: document.getElementById('brokerUrlDisplay'),
+            brokerUrl: document.getElementById('brokerUrl'),
             
             // Stats elements
             totalMessages: document.getElementById('totalMessages'),
@@ -87,8 +98,6 @@ class MQTTVisualizer {
             
             // Visualization elements
             messageFlow: document.getElementById('messageFlow'),
-            flowerContainer: document.getElementById('flowerContainer'),
-            flowerVisualization: document.getElementById('flowerVisualization'),
             
             // Visualization mode buttons
             vizIconButtons: document.querySelectorAll('.viz-icon-btn'),
@@ -127,38 +136,57 @@ class MQTTVisualizer {
     }
 
     initializeEventListeners() {
+        // Browser compatibility for passive event listeners
+        const passiveOption = this.supportsPassiveListeners ? { passive: false } : false;
+        
         // Enter key handlers with cached DOM elements
         this.domElements.host.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.toggleConnection();
-        });
+            if (e.key === 'Enter' || e.keyCode === 13) this.toggleConnection();
+        }, passiveOption);
         
         this.domElements.topic.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.subscribeToTopic();
-        });
+            if (e.key === 'Enter' || e.keyCode === 13) this.subscribeToTopic();
+        }, passiveOption);
         
-        // Cursor key handlers for controlling bubble direction
+        // Cursor key handlers for controlling bubble direction with better browser compatibility
         document.addEventListener('keydown', (e) => {
             if (this.visualizationMode === 'bubbles') {
-                switch(e.key) {
+                const key = e.key || e.which || e.keyCode;
+                let handled = false;
+                
+                switch(key) {
                     case 'ArrowUp':
+                    case 'Up': // IE fallback
+                    case 38: // keyCode fallback
                         this.bubbleDirection = { x: 0, y: -1 };
-                        e.preventDefault();
+                        handled = true;
                         break;
                     case 'ArrowDown':
+                    case 'Down': // IE fallback
+                    case 40: // keyCode fallback
                         this.bubbleDirection = { x: 0, y: 1 };
-                        e.preventDefault();
+                        handled = true;
                         break;
                     case 'ArrowLeft':
+                    case 'Left': // IE fallback
+                    case 37: // keyCode fallback
                         this.bubbleDirection = { x: -1, y: 0 };
-                        e.preventDefault();
+                        handled = true;
                         break;
                     case 'ArrowRight':
+                    case 'Right': // IE fallback
+                    case 39: // keyCode fallback
                         this.bubbleDirection = { x: 1, y: 0 };
-                        e.preventDefault();
+                        handled = true;
                         break;
                 }
+                
+                if (handled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             }
-        });
+        }, passiveOption);
     }
 
     initializeSidebarToggle() {
@@ -236,24 +264,28 @@ class MQTTVisualizer {
     }
 
     initializeModal() {
+        const passiveOption = this.supportsPassiveListeners ? { passive: true } : false;
+        
         // Close modal when clicking the X button
         this.domElements.modalClose.addEventListener('click', () => {
             this.closeModal();
-        });
+        }, passiveOption);
         
         // Close modal when clicking outside the modal content
         this.domElements.modal.addEventListener('click', (e) => {
             if (e.target === this.domElements.modal) {
                 this.closeModal();
             }
-        });
+        }, passiveOption);
         
-        // Close modal when pressing Escape key
+        // Close modal when pressing Escape key with browser compatibility
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.domElements.modal.style.display === 'block') {
+            const key = e.key || e.which || e.keyCode;
+            if ((key === 'Escape' || key === 'Esc' || key === 27) && 
+                this.domElements.modal.style.display === 'block') {
                 this.closeModal();
             }
-        });
+        }, this.supportsPassiveListeners ? { passive: false } : false);
     }
 
     showMessageModal(messageData) {
@@ -294,7 +326,7 @@ class MQTTVisualizer {
         
         this.websocket = new WebSocket(wsUrl);
         
-        this.websocket.onopen = (event) => {
+        this.websocket.onopen = () => {
             console.log('WebSocket connected');
             this.updateConnectionStatus('connecting');
         };
@@ -304,7 +336,7 @@ class MQTTVisualizer {
             this.handleWebSocketMessage(data);
         };
         
-        this.websocket.onclose = (event) => {
+        this.websocket.onclose = () => {
             console.log('WebSocket disconnected');
             this.websocket = null;
             if (this.isConnected) {
@@ -341,12 +373,18 @@ class MQTTVisualizer {
             this.domElements.subscribeBtn.disabled = false;
             this.domElements.liveIndicator.style.display = 'flex';
             
+            // Show broker URL under Live indicator
+            const brokerUrl = `${this.domElements.host.value}:${this.domElements.port.value}`;
+            this.domElements.brokerUrl.textContent = brokerUrl;
+            this.domElements.brokerUrlDisplay.style.display = 'block';
+            
             // Show UI elements when connected
             this.domElements.statsPanel.style.display = 'block';
         } else {
             this.isConnected = false;
             this.domElements.subscribeBtn.disabled = true;
             this.domElements.liveIndicator.style.display = 'none';
+            this.domElements.brokerUrlDisplay.style.display = 'none';
         }
     }
 
@@ -385,28 +423,43 @@ class MQTTVisualizer {
     createVisualization(messageData) {
         if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial' || this.visualizationMode === 'starfield') {
             this.createMessageBubble(messageData);
-        } else if (this.visualizationMode === 'flower') {
-            this.createFlowerPetal(messageData);
         }
     }
 
-    // Message Animation
+    // Message Animation - Optimized with object pooling
     createMessageBubble(messageData) {
-        const bubble = document.createElement('div');
+        const bubble = this.getBubbleFromPool();
         bubble.className = 'message-bubble';
         
         // Get or create color for topic
         const color = this.getTopicColor(messageData.topic);
-        bubble.style.background = `linear-gradient(135deg, ${color}, ${color}E6)`;
-        bubble.style.border = `2px solid ${color}`;
         
-        // Create message content
+        // Batch style updates to reduce reflows
+        const styles = {
+            background: `linear-gradient(135deg, ${color}, ${color}E6)`,
+            border: `2px solid ${color}`,
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+            transform: 'translateZ(0)'
+        };
+        
+        // Apply base dimming for non-starfield modes (starfield handles brightness dynamically)
+        if (this.visualizationMode !== 'starfield') {
+            styles.filter = 'brightness(0.8)'; // Dim cards to 80% brightness
+        }
+        
+        Object.assign(bubble.style, styles);
+        
+        // Create message content with template for better performance
         const customer = this.extractCustomerFromTopic(messageData.topic);
-        bubble.innerHTML = `
+        const template = document.createElement('template');
+        template.innerHTML = `
             <div class="message-customer">${customer}</div>
             <div class="message-topic">${messageData.topic}</div>
             <div class="message-time">${this.formatTime(messageData.timestamp)}</div>
         `;
+        
+        bubble.appendChild(template.content);
         
         // Add click event listener to show modal
         bubble.addEventListener('click', () => {
@@ -481,12 +534,11 @@ class MQTTVisualizer {
         // Start animation from the already-set position
         this.animateMessage(bubble, startX, startY);
         
-        // Remove bubble after animation completes
-        setTimeout(() => {
-            if (bubble.parentNode) {
-                bubble.parentNode.removeChild(bubble);
-            }
-        }, 15000);
+        // Store bubble reference for cleanup
+        const bubbleId = Date.now() + Math.random();
+        this.activeAnimations.set(bubbleId, bubble);
+        
+        // Cards will be removed by their individual animation logic when off-screen or fully transparent
     }
 
     animateMessage(bubble, startX, startY) {
@@ -534,9 +586,11 @@ class MQTTVisualizer {
                 bubble.style.opacity = opacity;
                 bubble.style.transform = `scale(${scale})`;
                 
-                if (progress < 1 && bubble.parentNode) {
+                if (progress < 1 && opacity > 0 && bubble.parentNode) {
                     requestAnimationFrame(animate);
-                } else {
+                } else if (bubble.parentNode) {
+                    // Remove card when animation completes or becomes fully transparent
+                    bubble.parentNode.removeChild(bubble);
                     this.activeRadialAnimations--;
                 }
             };
@@ -574,27 +628,8 @@ class MQTTVisualizer {
                 // Calculate distance from center with acceleration (quadratic growth for starfield effect)
                 const timeRatio = Math.min(elapsed / maxDuration, 1);
 
-                //currentDistance = timeRatio * timeRatio * maxDistance; // Quadratic: slow start, fast finish
                 const intensity = 8; // Higher = more dramatic
                 currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
-
-                //  1. Cubic (x³) - More dramatic:
-                //  currentDistance = timeRatio * timeRatio * timeRatio * maxDistance; // x³
-                //            
-                //  2. Quartic (x⁴) - Very dramatic:
-                //  currentDistance = Math.pow(timeRatio, 4) * maxDistance; // x⁴
-                //            
-                //  3. Exponential - Extremely dramatic:
-                //  // Cards barely move for most of the time, then explode outward
-                //  currentDistance = (Math.exp(timeRatio * 3) - 1) / (Math.exp(3) - 1) * maxDistance;
-                //            
-                //  4. Custom exponential with adjustable intensity:
-                //  const intensity = 5; // Higher = more dramatic
-                //  currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
-                //            
-                //  5. Smooth exponential transition:
-                //  // Very slow start, then rapid acceleration
-                //  currentDistance = (Math.exp(timeRatio * 4) - 1) / (Math.exp(4) - 1) * maxDistance;
 
                 // Position based on distance and direction
                 const currentX = centerX + (directionX * currentDistance);
@@ -604,12 +639,9 @@ class MQTTVisualizer {
                 const minScale = 0.3;
                 const maxScale = 10.0;
                 const distanceRatio = Math.min(currentDistance / maxDistance, 1);
-                const scale = minScale + (distanceRatio * distanceRatio * (maxScale - minScale)); // Quadratic growth
+                const scale = minScale + (distanceRatio * distanceRatio * (maxScale - minScale));
                 
-                // Velocity based on distance (further = faster movement per frame)
-                // This is implicit in the distance calculation above
-                
-                // Opacity: fade in quickly during first part of animation, then stay fully visible
+                // Opacity: fade in quickly during first part of animation
                 let opacity;
                 if (distanceRatio < 0.02) {
                     opacity = distanceRatio * 50; // Very quick fade in (2% of journey)
@@ -617,17 +649,22 @@ class MQTTVisualizer {
                     opacity = 1; // Stay fully visible for the rest of the journey
                 }
                 
+                // Brightness: related to distance and size - darker at center, brighter at edge
+                const minBrightness = 0.4; // Dark at center (40% brightness)
+                const maxBrightness = 1.0; // Full brightness at edge
+                const brightness = minBrightness + (distanceRatio * (maxBrightness - minBrightness));
+                
                 // Update DOM
                 bubble.style.left = `${currentX}px`;
                 bubble.style.top = `${currentY}px`;
                 bubble.style.transform = `scale(${scale})`;
                 bubble.style.opacity = opacity;
+                bubble.style.filter = `brightness(${brightness})`;
                 
                 // Check if card should be removed (off screen or timeout)
                 const flowWidth = this.domElements.messageFlow.clientWidth;
                 const flowHeight = this.domElements.messageFlow.clientHeight;
-                const cardMaxSize = 400 * 8; // max card width * max scale
-                const buffer = cardMaxSize / 2; // Buffer to account for card size
+                const buffer = 2000; // Use larger fixed buffer instead of calculated one
                 const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
                                    currentY < -buffer || currentY > flowHeight + buffer);
                 
@@ -686,59 +723,6 @@ class MQTTVisualizer {
         }
     }
 
-    // Flower visualization - simplified and cleaned up
-    createFlowerPetal(messageData) {
-        const circleId = this.petalIdCounter++;
-        const color = this.getTopicColor(messageData.topic);
-        
-        // Create circle element with optimized styling
-        const circle = this.createCircleElement(circleId, color);
-        
-        // Add to flower container
-        this.domElements.flowerContainer.appendChild(circle);
-        
-        // Store circle info
-        this.petals.push({
-            id: circleId,
-            element: circle,
-            color: color,
-            topic: messageData.topic
-        });
-        
-        // Auto-remove after 5 seconds
-        this.scheduleCircleRemoval(circleId);
-    }
-
-    createCircleElement(circleId, color) {
-        const circle = document.createElement('div');
-        circle.className = 'test-circle';
-        circle.id = `circle-${circleId}`;
-        
-        // Apply styles in one go for better performance
-        Object.assign(circle.style, {
-            position: 'absolute',
-            width: '20px',
-            height: '20px',
-            borderRadius: '50%',
-            backgroundColor: color,
-            border: '2px solid white',
-            left: '400px',
-            top: '400px',
-            transform: 'translate(-50%, -50%)'
-        });
-        
-        return circle;
-    }
-
-    scheduleCircleRemoval(circleId) {
-        setTimeout(() => {
-            const circleElement = document.getElementById(`circle-${circleId}`);
-            if (circleElement) {
-                circleElement.remove();
-                this.petals = this.petals.filter(p => p.id !== circleId);
-            }
-        }, 5000);
-    }
 
     // Visualization switching
     switchVisualization(mode) {
@@ -759,7 +743,6 @@ class MQTTVisualizer {
         // Show/hide appropriate containers using cached elements
         if (mode === 'bubbles' || mode === 'radial' || mode === 'starfield') {
             this.domElements.messageFlow.style.display = 'block';
-            this.domElements.flowerVisualization.style.display = 'none';
             
             // Add specific classes for different modes
             if (mode === 'starfield') {
@@ -772,11 +755,6 @@ class MQTTVisualizer {
                 this.domElements.messageFlow.classList.remove('starfield-mode');
                 this.domElements.messageFlow.classList.remove('radial-mode');
             }
-        } else if (mode === 'flower') {
-            this.domElements.messageFlow.style.display = 'none';
-            this.domElements.flowerVisualization.style.display = 'flex';
-            this.domElements.messageFlow.classList.remove('starfield-mode');
-            this.domElements.messageFlow.classList.remove('radial-mode');
         }
     }
     
@@ -802,27 +780,25 @@ class MQTTVisualizer {
     }
     
     clearAllVisualizations() {
-        // Clear bubbles
+        // Cancel all active animation frames
+        this.animationFramePool.forEach(frameId => {
+            cancelAnimationFrame(frameId);
+        });
+        this.animationFramePool.clear();
+        
+        // Clear bubbles and return to pool where possible
         const bubbles = document.querySelectorAll('.message-bubble');
-        bubbles.forEach(bubble => bubble.remove());
-        
-        // Clear petals and test circles
-        const petals = document.querySelectorAll('.flower-petal');
-        const circles = document.querySelectorAll('.test-circle');
-        
-        petals.forEach(petal => petal.remove());
-        circles.forEach(circle => circle.remove());
-        
-        // Clear any orphaned elements in flower container
-        if (this.domElements.flowerContainer) {
-            Array.from(this.domElements.flowerContainer.children).forEach(child => {
-                if (child.className !== 'flower-center') {
-                    child.remove();
+        bubbles.forEach(bubble => {
+            if (bubble.parentNode) {
+                bubble.parentNode.removeChild(bubble);
+                if (!this.returnBubbleToPool(bubble)) {
+                    bubble.innerHTML = '';
                 }
-            });
-        }
+            }
+        });
         
-        this.petals = [];
+        this.activeAnimations.clear();
+        this.activeRadialAnimations = 0;
     }
 
     // Color Management
@@ -1133,33 +1109,104 @@ class MQTTVisualizer {
         }
     }
     
-    startFrameRateMonitoring() {
-        const updateFrameRate = () => {
-            this.frameCount++;
-            const now = Date.now();
-            const timeDiff = now - this.lastFrameTime;
-            
-            // Update FPS and performance stats every second
-            if (timeDiff >= 1000) {
-                this.frameRate = Math.round((this.frameCount * 1000) / timeDiff);
-                if (this.domElements.frameRate) {
-                    this.domElements.frameRate.textContent = this.frameRate;
+    detectPassiveSupport() {
+        let supportsPassive = false;
+        try {
+            const opts = Object.defineProperty({}, 'passive', {
+                get: function() {
+                    supportsPassive = true;
                 }
+            });
+            window.addEventListener('test', null, opts);
+            window.removeEventListener('test', null, opts);
+        } catch (e) {}
+        return supportsPassive;
+    }
+    
+    // Optimized animation frame pooling
+    requestOptimizedFrame(callback) {
+        const frameId = requestAnimationFrame((timestamp) => {
+            this.animationFramePool.delete(frameId);
+            callback(timestamp);
+        });
+        this.animationFramePool.add(frameId);
+        return frameId;
+    }
+    
+    cancelOptimizedFrame(frameId) {
+        if (this.animationFramePool.has(frameId)) {
+            cancelAnimationFrame(frameId);
+            this.animationFramePool.delete(frameId);
+        }
+    }
+    
+    // Object pooling for message bubbles
+    getBubbleFromPool() {
+        if (this.bubblePool.length > 0) {
+            const bubble = this.bubblePool.pop();
+            // Reset bubble properties
+            bubble.className = 'message-bubble';
+            bubble.style.cssText = '';
+            bubble.innerHTML = '';
+            bubble.removeAttribute('data-reused');
+            return bubble;
+        }
+        return document.createElement('div');
+    }
+    
+    returnBubbleToPool(bubble) {
+        if (this.bubblePool.length < this.maxPoolSize) {
+            // Clean up bubble
+            bubble.style.display = 'none';
+            bubble.innerHTML = '';
+            bubble.className = '';
+            bubble.setAttribute('data-reused', 'true');
+            this.bubblePool.push(bubble);
+            return true;
+        }
+        return false;
+    }
+    
+    startFrameRateMonitoring() {
+        let lastStatsUpdate = 0;
+        const statsUpdateInterval = 1000; // Update stats every second
+        
+        const updateFrameRate = (timestamp) => {
+            this.frameCount++;
+            
+            // Throttle stats updates for better performance
+            if (timestamp - lastStatsUpdate >= statsUpdateInterval) {
+                const timeDiff = timestamp - this.lastFrameTime;
+                this.frameRate = Math.round((this.frameCount * 1000) / timeDiff);
                 
-                // Count active message cards
-                const activeCards = document.querySelectorAll('.message-bubble').length;
-                if (this.domElements.activeCards) {
-                    this.domElements.activeCards.textContent = activeCards;
+                // Use idle callback for non-critical updates
+                const updateStats = () => {
+                    if (this.domElements.frameRate) {
+                        this.domElements.frameRate.textContent = this.frameRate;
+                    }
+                    
+                    // Count active message cards efficiently
+                    const activeCards = document.querySelectorAll('.message-bubble').length;
+                    if (this.domElements.activeCards) {
+                        this.domElements.activeCards.textContent = activeCards;
+                    }
+                };
+                
+                if (this.hasRequestIdleCallback) {
+                    requestIdleCallback(updateStats);
+                } else {
+                    setTimeout(updateStats, 0);
                 }
                 
                 this.frameCount = 0;
-                this.lastFrameTime = now;
+                this.lastFrameTime = timestamp;
+                lastStatsUpdate = timestamp;
             }
             
-            requestAnimationFrame(updateFrameRate);
+            this.requestOptimizedFrame(updateFrameRate);
         };
         
-        updateFrameRate();
+        this.requestOptimizedFrame(updateFrameRate);
     }
     
 }
