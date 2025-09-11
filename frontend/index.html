@@ -315,12 +315,14 @@
             position: relative;
             overflow: visible;
             background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+            /* Improve rendering performance */
+            will-change: auto;
+            contain: layout style paint;
         }
 
         /* Space background for starfield mode */
         .message-flow.starfield-mode {
             position: relative;
-            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7));
         }
         
         .message-flow.starfield-mode::before {
@@ -330,10 +332,16 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: url('stars.jpg') center/cover no-repeat;
+            background: 
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url('stars.jpg') center/cover no-repeat;
             background-size: 100% 100%;
             z-index: -1;
             animation: starfieldZoom 20s linear infinite;
+            /* Hardware acceleration for background animation */
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            transform: translateZ(0);
         }
         
         @keyframes starfieldZoom {
@@ -441,8 +449,14 @@
             max-width: 400px;
             min-width: 180px;
             word-wrap: break-word;
-            transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.5s ease;
             z-index: 10;
+            /* Hardware acceleration hints */
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            perspective: 1000px;
+            /* Force GPU layer */
+            transform: translateZ(0);
         }
 
         /* Circular bubble styling for radial mode */
@@ -550,22 +564,22 @@
         @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateY(50px);
+                transform: translate3d(0, 50px, 0);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translate3d(0, 0, 0);
             }
         }
 
         @keyframes fadeOutUp {
             from {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translate3d(0, 0, 0);
             }
             to {
                 opacity: 0;
-                transform: translateY(-50px);
+                transform: translate3d(0, -50px, 0);
             }
         }
 
@@ -586,12 +600,30 @@
             background: rgba(0, 0, 0, 0.4);
             padding: 10px 15px;
             border-radius: 20px;
+            z-index: 2000;
             border: 1px solid var(--border-color);
+        }
+        
+        .broker-url-display {
+            position: absolute;
+            top: 65px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 12px;
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            font-size: 11px;
+            color: var(--text-color);
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            z-index: 2000;
         }
 
         .color-legend {
             position: absolute;
-            top: 70px;
+            top: 110px;
             left: 20px;
             background: var(--stats-bg);
             padding: 10px;
@@ -636,6 +668,8 @@
             margin-right: 8px;
             background: #4CAF50;
             animation: pulse 2s infinite;
+            will-change: opacity;
+            transform: translateZ(0);
         }
 
         @keyframes pulse {
@@ -839,8 +873,9 @@
         }
 
         .message-bubble:hover {
-            transform: scale(1.02);
+            transform: scale(1.02) translateZ(0);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s ease;
         }
 
         .theme-selector {
@@ -979,6 +1014,9 @@
                 <div class="live-indicator" id="liveIndicator" style="display: none;">
                     <div class="live-dot"></div>
                     <span>LIVE</span>
+                </div>
+                <div class="broker-url-display" id="brokerUrlDisplay" style="display: none;">
+                    <span id="brokerUrl"></span>
                 </div>
 
                 <div class="color-legend" id="colorLegend" style="display: none;">
