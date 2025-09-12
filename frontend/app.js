@@ -26,7 +26,7 @@ class MQTTVisualizer {
         
         // Performance tracking for radial mode
         this.activeRadialAnimations = 0;
-        this.maxRadialAnimations = 100; // Limit concurrent animations
+        this.maxRadialAnimations = 150; // Limit concurrent animations
         
         // Z-index tracking for depth layering
         this.messageZIndex = 1000; // Start with high z-index
@@ -443,11 +443,8 @@ class MQTTVisualizer {
             transform: 'translateZ(0)'
         };
         
-        // Apply base dimming for non-starfield modes (starfield handles brightness and shading dynamically)
-        if (this.visualizationMode !== 'starfield') {
-            styles.filter = 'brightness(0.8)'; // Dim cards to 80% brightness
-        } else {
-            // For starfield mode, add side-lighting gradient overlay
+        // For starfield mode, add side-lighting gradient overlay (brightness handled dynamically during animation)
+        if (this.visualizationMode === 'starfield') {
             styles.background = `
                 linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0.4) 100%),
                 linear-gradient(135deg, ${color}, ${color}E6)
