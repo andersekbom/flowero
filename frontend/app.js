@@ -443,12 +443,16 @@ class MQTTVisualizer {
             transform: 'translateZ(0)'
         };
         
-        // For starfield mode, add side-lighting gradient overlay (brightness handled dynamically during animation)
+        // Apply mode-specific styling
         if (this.visualizationMode === 'starfield') {
+            // For starfield mode, add side-lighting gradient overlay (brightness handled dynamically during animation)
             styles.background = `
                 linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0.4) 100%),
                 linear-gradient(135deg, ${color}, ${color}E6)
             `;
+        } else if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial') {
+            // Reduce brightness by 10% for falling boxes and radial burst modes
+            styles.filter = 'brightness(0.9)';
         }
         
         Object.assign(bubble.style, styles);
