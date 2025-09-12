@@ -779,20 +779,22 @@ class MQTTVisualizer {
         const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble');
         bubbles.forEach(bubble => bubble.remove());
         
-        // Get dimensions
+        // Get full viewport dimensions for responsive full-screen layout
         const container = this.domElements.messageFlow;
-        const width = container.clientWidth;
-        const height = container.clientHeight;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
         
-        // Create D3 SVG
+        // Create D3 SVG with full viewport coverage
         this.d3Svg = d3.select(container)
             .append('svg')
             .attr('id', 'd3-network')
             .attr('width', width)
             .attr('height', height)
-            .style('position', 'absolute')
+            .style('position', 'fixed') // Fixed positioning for full screen
             .style('top', '0')
             .style('left', '0')
+            .style('width', '100vw')
+            .style('height', '100vh')
             .style('z-index', '1');
         
         // Add filters
@@ -833,31 +835,40 @@ class MQTTVisualizer {
         // Initialize with broker node
         this.createBrokerNode();
         
-        // Create D3 force simulation
+        // Create D3 force simulation with smoother movement (less jittery)
         this.d3Simulation = d3.forceSimulation(this.d3Nodes)
+            .velocityDecay(0.6) // Increased friction/damping (0.4 + 50% = 0.6)
+            .alphaDecay(0.01) // Slower cooling (default 0.0228, lower = slower settling)
+            .alphaMin(0.001) // Lower minimum alpha for smoother movement
             .force('link', d3.forceLink(this.d3Links)
                 .id(d => d.id)
-                .distance(d => d.distance || 150)
-                .strength(0.5))
+                .distance(d => d.distance || 250)
+                .strength(0.2)) // Further reduced for smoother movement
             .force('charge', d3.forceManyBody()
-                .strength(-800)
-                .distanceMax(300))
-            .force('center', d3.forceCenter(width / 2, height / 2))
+                .strength(-800) // Reduced repulsion for less aggressive movement
+                .distanceMax(400))
+            .force('center', d3.forceCenter(width / 2, height / 2)
+                .strength(0.05)) // Much weaker centering force
             .force('collision', d3.forceCollide()
-                .radius(d => d.radius + 20)
-                .strength(0.8))
+                .radius(d => d.radius + 30)
+                .strength(0.4)) // Reduced collision strength
+            .force('boundary', this.createBoundaryForce(width, height))
             .on('tick', () => this.onSimulationTick());
         
         // Setup resize handling
         this.setupNetworkResizeHandling();
+        
+        // Start brightness decay system
+        this.startBrightnessDecay();
     }
     
     createBrokerNode() {
-        const flowWidth = this.domElements.messageFlow.clientWidth;
-        const flowHeight = this.domElements.messageFlow.clientHeight;
+        const flowWidth = window.innerWidth;
+        const flowHeight = window.innerHeight;
         
-        // Get broker URL from the display element (same as shown in top left)
-        const brokerUrl = this.domElements.brokerUrl.textContent || 'BROKER';
+        // Get broker URL from the display element and remove port
+        const fullBrokerUrl = this.domElements.brokerUrl.textContent || 'BROKER';
+        const brokerUrl = fullBrokerUrl.split(':')[0]; // Remove port, keep only host
         
         // Create broker node data for D3
         const brokerNode = {
@@ -868,12 +879,42 @@ class MQTTVisualizer {
             fx: flowWidth / 2, // Fix position
             fy: flowHeight / 2, // Fix position
             radius: 40,
+            baseRadius: 40, // Store original radius
             color: '#4CAF50',
-            label: brokerUrl
+            label: brokerUrl,
+            brightness: 1.0, // Broker stays at full brightness
+            sizeScale: 1.0 // Broker stays at full size
         };
         
         // Add to D3 nodes array
         this.d3Nodes.push(brokerNode);
+    }
+    
+    createBoundaryForce(width, height) {
+        // Create a gentle custom force to keep nodes within viewport boundaries
+        return (alpha) => {
+            const padding = 50; // Minimum distance from edge
+            const forceStrength = 0.05; // Much gentler boundary force
+            
+            this.d3Nodes.forEach(node => {
+                // Skip broker node (it's fixed in center)
+                if (node.type === 'broker') return;
+                
+                // Apply gentle boundary constraints
+                if (node.x < padding) {
+                    node.vx += (padding - node.x) * alpha * forceStrength;
+                }
+                if (node.x > width - padding) {
+                    node.vx += (width - padding - node.x) * alpha * forceStrength;
+                }
+                if (node.y < padding) {
+                    node.vy += (padding - node.y) * alpha * forceStrength;
+                }
+                if (node.y > height - padding) {
+                    node.vy += (height - padding - node.y) * alpha * forceStrength;
+                }
+            });
+        };
     }
     
     addNetworkMessage(customer, topic, messageData) {
@@ -886,9 +927,12 @@ class MQTTVisualizer {
                 id: customer,
                 type: 'customer',
                 radius: 30,
+                baseRadius: 30, // Store original radius
                 color: color,
                 label: customer,
-                messageCount: 0
+                messageCount: 0,
+                brightness: 1.0, // Start at full brightness
+                sizeScale: 1.0 // Start at full size
             };
             this.d3Nodes.push(customerNode);
             
@@ -896,13 +940,15 @@ class MQTTVisualizer {
             this.d3Links.push({
                 source: 'broker',
                 target: customer,
-                distance: 150
+                distance: 250 // Increased for longer lines
             });
         }
         
-        // Update customer node activity
+        // Update customer node activity, brightness and size
         customerNode.messageCount++;
         customerNode.lastActivity = Date.now();
+        customerNode.brightness = 1.0; // Full brightness on new message
+        customerNode.sizeScale = 1.0; // Full size on new message
         
         // Find or create topic node (one per unique topic)
         const topicId = `${customer}-${topic}`;
@@ -912,12 +958,15 @@ class MQTTVisualizer {
                 id: topicId,
                 type: 'topic',
                 radius: 12,
+                baseRadius: 12, // Store original radius
                 color: this.getTopicColor(topic),
                 label: topic.split('/').pop() || 'topic',
                 customer: customer,
                 topic: topic,
                 messageCount: 0,
-                lastActivity: Date.now()
+                lastActivity: Date.now(),
+                brightness: 1.0, // Start at full brightness
+                sizeScale: 1.0 // Start at full size
             };
             this.d3Nodes.push(topicNode);
             
@@ -925,16 +974,75 @@ class MQTTVisualizer {
             this.d3Links.push({
                 source: customer,
                 target: topicId,
-                distance: 80
+                distance: 120 // Increased from 80 for longer lines
             });
         }
         
-        // Update topic node activity (don't create new nodes, just update existing)
+        // Update topic node activity, brightness and size (don't create new nodes, just update existing)
         topicNode.messageCount++;
         topicNode.lastActivity = Date.now();
+        topicNode.brightness = 1.0; // Full brightness on new message
+        topicNode.sizeScale = 1.0; // Full size on new message
         
         // Clean up old topic nodes that haven't received messages recently
         this.cleanupOldTopics();
+    }
+    
+    startBrightnessDecay() {
+        // Update brightness every second
+        this.brightnessInterval = setInterval(() => {
+            this.updateNodeBrightness();
+        }, 1000);
+    }
+    
+    updateNodeBrightness() {
+        const now = Date.now();
+        const decayRate = 0.05; // Decreases by 5% per second
+        const minBrightness = 0.2; // Minimum 20% brightness
+        const minSizeScale = 0.5; // Minimum 50% size
+        
+        let updated = false;
+        
+        this.d3Nodes.forEach(node => {
+            // Skip broker node - it stays at full brightness and size
+            if (node.type === 'broker') return;
+            
+            // Calculate time since last activity (in seconds)
+            const timeSinceActivity = (now - node.lastActivity) / 1000;
+            
+            // Decay brightness and size over time
+            if (timeSinceActivity > 1) {
+                const newBrightness = Math.max(minBrightness, 1.0 - (timeSinceActivity * decayRate));
+                const newSizeScale = Math.max(minSizeScale, 1.0 - (timeSinceActivity * decayRate));
+                
+                if (Math.abs(node.brightness - newBrightness) > 0.01) {
+                    node.brightness = newBrightness;
+                    updated = true;
+                }
+                
+                if (Math.abs(node.sizeScale - newSizeScale) > 0.01) {
+                    node.sizeScale = newSizeScale;
+                    // Update actual radius used by simulation
+                    node.radius = node.baseRadius * newSizeScale;
+                    updated = true;
+                }
+            }
+        });
+        
+        // Update visual elements if brightness or size changed
+        if (updated) {
+            this.updateNodeVisualProperties();
+        }
+    }
+    
+    updateNodeVisualProperties() {
+        // Update visual brightness and size of nodes
+        this.d3Container.nodes.selectAll('g.node circle')
+            .style('opacity', d => d.brightness)
+            .attr('r', d => d.radius); // Update radius
+            
+        this.d3Container.nodes.selectAll('g.node text')
+            .style('opacity', d => d.brightness * 0.9); // Text slightly dimmer
     }
     
     updateD3Simulation() {
@@ -984,17 +1092,22 @@ class MQTTVisualizer {
             .attr('class', 'node')
             .attr('id', d => `node-${d.id}`);
         
-        // Add circles
+        // Add circles with initial positions, brightness and size
         nodeEnter.append('circle')
-            .attr('r', d => d.radius)
+            .attr('r', d => d.radius) // Uses current radius (baseRadius * sizeScale)
+            .attr('cx', d => d.x || 0)
+            .attr('cy', d => d.y || 0)
             .attr('fill', d => d.color)
             .attr('stroke', '#fff')
             .attr('stroke-width', d => d.type === 'broker' ? 3 : 2)
-            .attr('filter', 'url(#glow)');
+            .attr('filter', 'url(#glow)')
+            .style('opacity', d => d.brightness || 1.0);
         
-        // Add labels
+        // Add labels with initial positions and brightness
         nodeEnter.append('text')
             .attr('text-anchor', 'middle')
+            .attr('x', d => d.x || 0)
+            .attr('y', d => (d.y || 0) + 5)
             .attr('fill', 'white')
             .attr('font-size', d => {
                 if (d.type === 'broker') return '10px';
@@ -1004,6 +1117,7 @@ class MQTTVisualizer {
             })
             .attr('font-weight', d => d.type === 'broker' ? 'bold' : 'normal')
             .attr('filter', 'url(#textShadow)')
+            .style('opacity', d => (d.brightness || 1.0) * 0.9)
             .text(d => d.label);
         
         // Remove old nodes
@@ -1066,7 +1180,7 @@ class MQTTVisualizer {
     }
     
     cleanupOldTopics() {
-        const maxAge = 60000; // 60 seconds (longer than messages since topics are persistent)
+        const maxAge = 300000; // 5 minutes - much longer to keep topics visible
         const now = Date.now();
         
         // Find old topic nodes that haven't received messages recently
@@ -1076,17 +1190,30 @@ class MQTTVisualizer {
         
         // Remove old topics and their links
         oldTopics.forEach(topicNode => {
+            console.log('Removing old topic node:', topicNode.id);
+            
             // Remove from nodes array
             const nodeIndex = this.d3Nodes.findIndex(n => n.id === topicNode.id);
             if (nodeIndex !== -1) {
                 this.d3Nodes.splice(nodeIndex, 1);
             }
             
-            // Remove associated links
-            this.d3Links = this.d3Links.filter(link => 
-                link.source !== topicNode.id && link.target !== topicNode.id
-            );
+            // Remove associated links (D3 converts source/target to objects after simulation starts)
+            this.d3Links = this.d3Links.filter(link => {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                const shouldKeep = sourceId !== topicNode.id && targetId !== topicNode.id;
+                if (!shouldKeep) {
+                    console.log('Removing link:', sourceId, '->', targetId);
+                }
+                return shouldKeep;
+            });
         });
+        
+        // If we removed any topics, update the simulation
+        if (oldTopics.length > 0) {
+            this.updateD3Simulation();
+        }
     }
     
     // Legacy method - no longer used with D3.js implementation
@@ -2326,22 +2453,14 @@ class MQTTVisualizer {
     }
     
     setupNetworkResizeHandling() {
-        // Use ResizeObserver if available for better performance
-        if (window.ResizeObserver) {
-            this.networkResizeObserver = new ResizeObserver(() => {
-                this.handleNetworkResize();
-            });
-            this.networkResizeObserver.observe(this.domElements.messageFlow);
-        } else {
-            // Fallback to window resize event
-            window.addEventListener('resize', () => {
-                this.handleNetworkResize();
-            });
-        }
+        // Listen for window resize events for full viewport responsiveness
+        window.addEventListener('resize', () => {
+            this.handleNetworkResize();
+        });
     }
     
     handleNetworkResize() {
-        if (!this.networkSvg || this.visualizationMode !== 'network') {
+        if (!this.d3Svg || this.visualizationMode !== 'network') {
             return;
         }
         
@@ -2351,7 +2470,30 @@ class MQTTVisualizer {
         }
         
         this.resizeTimeout = setTimeout(() => {
-            this.resizeNetworkGraph();
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            // Update SVG dimensions to full viewport
+            this.d3Svg
+                .attr('width', width)
+                .attr('height', height)
+                .style('width', '100vw')
+                .style('height', '100vh');
+            
+            // Update force center and boundary
+            if (this.d3Simulation) {
+                this.d3Simulation.force('center', d3.forceCenter(width / 2, height / 2));
+                this.d3Simulation.force('boundary', this.createBoundaryForce(width, height));
+                
+                // Update broker node fixed position to viewport center
+                const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
+                if (brokerNode) {
+                    brokerNode.fx = width / 2;
+                    brokerNode.fy = height / 2;
+                }
+                
+                this.d3Simulation.alpha(0.3).restart();
+            }
         }, 100);
     }
     
@@ -2555,10 +2697,16 @@ class MQTTVisualizer {
             existingD3Svg.remove();
         }
         
-        // Stop D3 simulation
+        // Stop D3 simulation and brightness decay
         if (this.d3Simulation) {
             this.d3Simulation.stop();
             this.d3Simulation = null;
+        }
+        
+        // Stop brightness decay interval
+        if (this.brightnessInterval) {
+            clearInterval(this.brightnessInterval);
+            this.brightnessInterval = null;
         }
         
         // Clear D3 data
