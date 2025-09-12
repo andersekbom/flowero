@@ -516,6 +516,46 @@
             margin-top: 2px;
         }
 
+        /* Network mode styles */
+        .message-flow.network-mode {
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+            position: relative;
+        }
+        
+        .message-flow.network-mode::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        #networkSvg {
+            background: transparent;
+            overflow: visible;
+            z-index: 1;
+        }
+        
+        /* Ensure UI elements stay visible in network mode */
+        .message-flow.network-mode .live-indicator {
+            display: flex !important;
+            z-index: 2000;
+        }
+        
+        .message-flow.network-mode .broker-url-display,
+        .message-flow.network-mode .color-legend,
+        .message-flow.network-mode .stats-panel {
+            display: block !important;
+            z-index: 2000;
+        }
+
         .message-customer {
             font-weight: bold;
             font-size: 14px;
@@ -947,6 +987,19 @@
                         <circle cx="4" cy="19" r="1"/>
                     </svg>
                 </div>
+                <div class="viz-icon-btn" data-mode="network" data-tooltip="Network Graph">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                        <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <line x1="12" y1="12" x2="6" y2="6" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="18" y2="6" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="6" y2="18" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="18" y2="18" stroke="currentColor" stroke-width="1"/>
+                    </svg>
+                </div>
             </div>
             <div class="sidebar-content">
                 <h1>Flowero</h1>
@@ -1017,6 +1070,20 @@
                             <circle cx="4" cy="19" r="1"/>
                         </svg>
                         <span>Starfield</span>
+                    </div>
+                    <div class="viz-mode-btn" data-mode="network">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                            <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <line x1="12" y1="12" x2="6" y2="6" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="18" y2="6" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="6" y2="18" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="18" y2="18" stroke="currentColor" stroke-width="1"/>
+                        </svg>
+                        <span>Network Graph</span>
                     </div>
                 </div>
             </div>
@@ -1123,6 +1190,7 @@
         </div>
     </div>
 
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
