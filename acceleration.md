@@ -26,6 +26,3 @@ Current (quadratic):
   - Cubic (x³): 12.5% distance
   - Exponential: ~2% distance
   - x⁵: 3.125% distance
-
-  My recommendation: Try the cubic first (timeRatio³) for a noticeable improvement, or the custom exponential with intensity = 4 for a very
-  dramatic starfield effect where cards barely crawl at first, then zoom out rapidly.
