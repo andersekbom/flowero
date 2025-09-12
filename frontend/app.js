@@ -443,9 +443,15 @@ class MQTTVisualizer {
             transform: 'translateZ(0)'
         };
         
-        // Apply base dimming for non-starfield modes (starfield handles brightness dynamically)
+        // Apply base dimming for non-starfield modes (starfield handles brightness and shading dynamically)
         if (this.visualizationMode !== 'starfield') {
             styles.filter = 'brightness(0.8)'; // Dim cards to 80% brightness
+        } else {
+            // For starfield mode, add side-lighting gradient overlay
+            styles.background = `
+                linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0.4) 100%),
+                linear-gradient(135deg, ${color}, ${color}E6)
+            `;
         }
         
         Object.assign(bubble.style, styles);
@@ -542,7 +548,7 @@ class MQTTVisualizer {
     }
 
     animateMessage(bubble, startX, startY) {
-        const duration = 15000; // 15 seconds to cross screen
+        const duration = 20000; // 20 seconds to cross screen
 
         if (this.visualizationMode === 'radial') {
             // Limit concurrent animations to prevent crashes
@@ -650,7 +656,7 @@ class MQTTVisualizer {
                 }
                 
                 // Brightness: related to distance and size - darker at center, brighter at edge
-                const minBrightness = 0.4; // Dark at center (40% brightness)
+                const minBrightness = 0.6; // Dark at center (60% brightness)
                 const maxBrightness = 1.0; // Full brightness at edge
                 const brightness = minBrightness + (distanceRatio * (maxBrightness - minBrightness));
                 
@@ -1168,45 +1174,36 @@ class MQTTVisualizer {
     }
     
     startFrameRateMonitoring() {
-        let lastStatsUpdate = 0;
-        const statsUpdateInterval = 1000; // Update stats every second
+        let lastStatsUpdate = Date.now();
         
-        const updateFrameRate = (timestamp) => {
+        const updateFrameRate = () => {
             this.frameCount++;
+            const now = Date.now();
+            const timeDiff = now - lastStatsUpdate;
             
-            // Throttle stats updates for better performance
-            if (timestamp - lastStatsUpdate >= statsUpdateInterval) {
-                const timeDiff = timestamp - this.lastFrameTime;
-                this.frameRate = Math.round((this.frameCount * 1000) / timeDiff);
+            // Update stats every second
+            if (timeDiff >= 1000) {
+                const fps = Math.round((this.frameCount * 1000) / timeDiff);
                 
-                // Use idle callback for non-critical updates
-                const updateStats = () => {
-                    if (this.domElements.frameRate) {
-                        this.domElements.frameRate.textContent = this.frameRate;
-                    }
-                    
-                    // Count active message cards efficiently
-                    const activeCards = document.querySelectorAll('.message-bubble').length;
-                    if (this.domElements.activeCards) {
-                        this.domElements.activeCards.textContent = activeCards;
-                    }
-                };
+                // Update DOM elements directly
+                if (this.domElements.frameRate) {
+                    this.domElements.frameRate.textContent = fps;
+                }
                 
-                if (this.hasRequestIdleCallback) {
-                    requestIdleCallback(updateStats);
-                } else {
-                    setTimeout(updateStats, 0);
+                // Count active message cards
+                const activeCards = document.querySelectorAll('.message-bubble').length;
+                if (this.domElements.activeCards) {
+                    this.domElements.activeCards.textContent = activeCards;
                 }
                 
                 this.frameCount = 0;
-                this.lastFrameTime = timestamp;
-                lastStatsUpdate = timestamp;
+                lastStatsUpdate = now;
             }
             
-            this.requestOptimizedFrame(updateFrameRate);
+            requestAnimationFrame(updateFrameRate);
         };
         
-        this.requestOptimizedFrame(updateFrameRate);
+        updateFrameRate();
     }
     
 }

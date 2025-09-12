@@ -344,26 +344,53 @@
             transform: translateZ(0);
         }
         
+        .message-flow.starfield-mode::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: black;
+            z-index: -1;
+            opacity: 0;
+            animation: starfieldBlackout 20s linear infinite;
+            pointer-events: none;
+        }
+        
         @keyframes starfieldZoom {
             0% {
                 background-size: 100% 100%;
-                opacity: 1;
             }
             94% {
                 background-size: 200% 200%;
-                opacity: 1;
             }
-            95% {
+            96% {
                 background-size: 200% 200%;
-                opacity: 0;
             }
-            95.1% {
+            96.1% {
                 background-size: 100% 100%;
-                opacity: 0;
             }
             100% {
                 background-size: 100% 100%;
+            }
+        }
+        
+        @keyframes starfieldBlackout {
+            0% {
+                opacity: 0;
+            }
+            94% {
+                opacity: 0;
+            }
+            95% {
                 opacity: 1;
+            }
+            99% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
             }
         }
 
