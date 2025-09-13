@@ -2881,7 +2881,7 @@ class MQTTVisualizer {
             .attr('class', 'bubble-group')
             .attr('transform', `translate(${startX}, ${startY})`);
         
-        // Create bubble rectangle with rounded corners
+        // Create bubble rectangle with rounded corners and brighter border
         const bubbleRect = bubbleGroup
             .append('rect')
             .attr('class', 'bubble-rect')
@@ -2892,8 +2892,8 @@ class MQTTVisualizer {
             .attr('x', -140) // Center the rectangle
             .attr('y', -40)  // Center the rectangle
             .style('fill', color)
-            .style('stroke', color)
-            .style('stroke-width', '2px')
+            .style('stroke', d3.color(color).brighter(1.5))
+            .style('stroke-width', '3px')
             .style('opacity', 1);
         
         // Add text labels
@@ -2968,10 +2968,11 @@ class MQTTVisualizer {
             targetY = bubbleData.startY + (this.bubbleDirection.y * travelDistance);
         }
         
-        // Use D3 transition for smooth animation
+        // Use D3 transition with linear easing for constant velocity
         bubbleData.svgGroup
             .transition()
             .duration(duration)
+            .ease(d3.easeLinear) // Linear easing for constant velocity
             .attr('transform', `translate(${targetX}, ${targetY})`)
             .on('end', () => {
                 // Remove bubble when animation completes
