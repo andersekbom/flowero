@@ -26,7 +26,7 @@ class MQTTVisualizer {
         
         // Performance tracking for radial mode
         this.activeRadialAnimations = 0;
-        this.maxRadialAnimations = 150; // Limit concurrent animations
+        this.maxRadialAnimations = 200; // Limit concurrent animations
         
         // Z-index tracking for depth layering
         this.messageZIndex = 1000; // Start with high z-index (newer cards will have lower values)
