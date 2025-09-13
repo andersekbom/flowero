@@ -3110,53 +3110,46 @@ class MQTTVisualizer {
         const targetX = startX + dirX * totalDistance;
         const targetY = startY + dirY * totalDistance;
         
+        // Debug: Log the movement calculation
+        console.log(`Radial movement: Start(${startX}, ${startY}) -> Target(${targetX}, ${targetY}), Distance: ${totalDistance}, Angle: ${angle}`);
+        
         const duration = 20000; // 20 seconds (same as original)
         const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
         
-        // Create D3 selection for the bubble
-        const d3Bubble = d3.select(bubble);
+        // Use requestAnimationFrame approach (like original) for reliable animation
+        const startTime = Date.now();
         
-        // Animate position using D3 with linear easing for constant velocity
-        d3Bubble
-            .transition()
-            .duration(duration)
-            .ease(d3.easeLinear)
-            .style('left', `${targetX}px`)
-            .style('top', `${targetY}px`)
-            .on('end', () => {
-                // Remove bubble when position animation completes
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Animate straight outward to calculated target
+            const currentX = startX + (targetX - startX) * progress;
+            const currentY = startY + (targetY - startY) * progress;
+            
+            // Calculate scaling based on progress (start small, grow larger)
+            const minScale = 0.3;
+            const maxScale = 1.5;
+            const scale = minScale + (progress * (maxScale - minScale));
+            
+            // Calculate fade based on progress
+            const opacity = progress < fadeStartPoint ? 1 : 
+                Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
+            
+            bubble.style.left = `${currentX}px`;
+            bubble.style.top = `${currentY}px`;
+            bubble.style.opacity = opacity;
+            bubble.style.transform = `scale(${scale})`;
+            
+            if (progress < 1 && opacity > 0 && bubble.parentNode) {
+                requestAnimationFrame(animate);
+            } else if (bubble.parentNode) {
+                // Remove bubble when animation completes or becomes fully transparent
                 this.removeRadialBubble(bubble);
-            });
+            }
+        };
         
-        // Animate scaling from 0.3 to 1.5 with linear easing
-        d3Bubble
-            .transition()
-            .duration(duration)
-            .ease(d3.easeLinear)
-            .styleTween('transform', () => {
-                const minScale = 0.3;
-                const maxScale = 1.5;
-                const interpolator = d3.interpolate(minScale, maxScale);
-                return function(t) {
-                    const scale = interpolator(t);
-                    return `scale(${scale})`;
-                };
-            });
-        
-        // Handle opacity fade after fadeStartPoint (same as original)
-        const fadeDelay = duration * fadeStartPoint;
-        const fadeDuration = duration * (1 - fadeStartPoint);
-        
-        d3Bubble
-            .transition()
-            .delay(fadeDelay)
-            .duration(fadeDuration)
-            .ease(d3.easeLinear)
-            .style('opacity', 0)
-            .on('end', () => {
-                // Alternative removal path
-                this.removeRadialBubble(bubble);
-            });
+        animate();
     }
     
     removeRadialBubble(bubble) {
