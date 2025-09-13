@@ -46,6 +46,13 @@ class MQTTClientWrapper:
         self.last_error = None
         self.connection_lock = threading.Lock()
         
+        # Auto-reconnection settings
+        self.auto_reconnect = True
+        self.reconnect_delay_base = 1.0  # Base delay in seconds
+        self.reconnect_delay_max = 60.0  # Maximum delay in seconds
+        self.reconnect_timer = None
+        self.reconnect_attempts = 0
+        
         # Topic subscription tracking
         self.subscribed_topics = {}  # topic -> qos
         self.subscription_lock = threading.Lock()
@@ -74,7 +81,9 @@ class MQTTClientWrapper:
         if rc == 0:
             self._set_status(ConnectionStatus.CONNECTED)
             self.connection_attempts = 0
+            self.reconnect_attempts = 0
             self.last_error = None
+            self._cancel_reconnect_timer()
             self.logger.info(f"Connected to MQTT broker {self.host}:{self.port}")
             
             # Subscribe to any pending topics
@@ -92,15 +101,18 @@ class MQTTClientWrapper:
             self.last_error = error_msg
             self._set_status(ConnectionStatus.CONNECTION_FAILED)
             self.logger.error(error_msg)
+            self._schedule_reconnect()
     
     def _on_disconnect(self, client, userdata, rc):
         """Callback for disconnection"""
         if rc != 0:
             self._set_status(ConnectionStatus.CONNECTION_LOST)
             self.logger.warning(f"Unexpected disconnection from MQTT broker (code: {rc})")
+            self._schedule_reconnect()
         else:
             self._set_status(ConnectionStatus.DISCONNECTED)
             self.logger.info("Disconnected from MQTT broker")
+            self._cancel_reconnect_timer()
     
     def _on_message(self, client, userdata, msg):
         """Callback for received messages"""
@@ -134,6 +146,7 @@ class MQTTClientWrapper:
         self.last_error = "Failed to establish connection to MQTT broker"
         self._set_status(ConnectionStatus.CONNECTION_FAILED)
         self.logger.error(self.last_error)
+        self._schedule_reconnect()
     
     def _on_log(self, client, userdata, level, buf):
         """Callback for MQTT client logging"""
@@ -150,6 +163,48 @@ class MQTTClientWrapper:
             self.status = new_status
             if self.on_status_change:
                 self.on_status_change(new_status)
+    
+    def _cancel_reconnect_timer(self):
+        """Cancel any pending reconnection timer"""
+        if self.reconnect_timer:
+            self.reconnect_timer.cancel()
+            self.reconnect_timer = None
+    
+    def _schedule_reconnect(self):
+        """Schedule automatic reconnection with exponential backoff"""
+        if not self.auto_reconnect or not self.host:
+            return
+        
+        # Cancel any existing timer
+        self._cancel_reconnect_timer()
+        
+        # Calculate delay with exponential backoff
+        delay = min(self.reconnect_delay_base * (2 ** self.reconnect_attempts), self.reconnect_delay_max)
+        self.reconnect_attempts += 1
+        
+        self.logger.info(f"Scheduling reconnection attempt {self.reconnect_attempts} in {delay:.1f} seconds")
+        
+        # Schedule the reconnection
+        self.reconnect_timer = threading.Timer(delay, self._attempt_reconnect)
+        self.reconnect_timer.start()
+    
+    def _attempt_reconnect(self):
+        """Attempt to reconnect using last connection settings"""
+        if self.status == ConnectionStatus.CONNECTED:
+            return  # Already connected
+        
+        if not self.host:
+            self.logger.error("Cannot reconnect: no previous connection settings available")
+            return
+        
+        self.logger.info(f"Attempting automatic reconnection to {self.host}:{self.port}")
+        
+        # Attempt reconnection
+        success = self.connect(self.host, self.port, self.username, self.password)
+        
+        if not success:
+            # If connection failed, schedule another attempt
+            self._schedule_reconnect()
     
     def connect(self, host: str, port: int = 1883, username: str = None, password: str = None, keepalive: int = 60) -> bool:
         """
@@ -216,6 +271,9 @@ class MQTTClientWrapper:
         """
         with self.connection_lock:
             try:
+                # Cancel any pending reconnection attempts
+                self._cancel_reconnect_timer()
+                
                 if self.status in [ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTING]:
                     # Stop message queue processing
                     self.message_queue.stop_processing()
@@ -417,6 +475,21 @@ class MQTTClientWrapper:
         """Clear message statistics"""
         self.message_queue.clear_statistics()
 
+    def set_auto_reconnect(self, enabled: bool):
+        """Enable or disable automatic reconnection"""
+        self.auto_reconnect = enabled
+        if not enabled:
+            self._cancel_reconnect_timer()
+        self.logger.info(f"Auto-reconnect {'enabled' if enabled else 'disabled'}")
+    
+    def is_auto_reconnect_enabled(self) -> bool:
+        """Check if auto-reconnect is enabled"""
+        return self.auto_reconnect
+    
+    def get_reconnect_attempts(self) -> int:
+        """Get number of reconnection attempts since last disconnect"""
+        return self.reconnect_attempts
+
     def get_connection_info(self) -> Dict[str, Any]:
         """Get connection information"""
         msg_stats = self.get_message_statistics()
@@ -427,6 +500,8 @@ class MQTTClientWrapper:
             'status': self.status.value,
             'client_id': self.client_id,
             'connection_attempts': self.connection_attempts,
+            'reconnect_attempts': self.reconnect_attempts,
+            'auto_reconnect': self.auto_reconnect,
             'last_error': self.last_error,
             'subscribed_topics': self.get_subscribed_topics(),
             'total_messages': msg_stats.get('total_messages', 0),
