@@ -439,7 +439,7 @@ class MQTTVisualizer {
         } else if (this.visualizationMode === 'bubbles') {
             this.updateD3Bubbles(messageData);
         } else if (this.visualizationMode === 'radial') {
-            this.updateD3Radial(messageData);
+            this.createD3RadialBubble(messageData);
         } else if (this.visualizationMode === 'starfield') {
             this.createMessageBubble(messageData);
         }
@@ -3016,290 +3016,141 @@ class MQTTVisualizer {
         }
     }
 
-    // D3 Radial Implementation
-    updateD3Radial(messageData) {
-        if (!this.d3RadialSvg) {
-            this.initializeD3Radial();
-        }
-        
-        // Create a new radial burst for this message
-        this.createD3Radial(messageData);
-    }
-    
-    initializeD3Radial() {
-        // Clear existing content
-        const existingSvg = this.domElements.messageFlow.querySelector('#d3-radial');
-        if (existingSvg) {
-            existingSvg.remove();
-        }
-        
-        // Remove any existing message bubbles
-        const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble');
-        bubbles.forEach(bubble => bubble.remove());
-        
-        // Clear any existing D3 visualizations
-        if (this.d3Svg) {
-            this.d3Svg.remove();
-            this.d3Svg = null;
-            this.d3Simulation = null;
-        }
-        if (this.d3BubblesSvg) {
-            this.d3BubblesSvg.remove();
-            this.d3BubblesSvg = null;
-        }
-        
-        // Create D3 SVG for radial burst
-        const container = this.domElements.messageFlow;
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        
-        this.d3RadialSvg = d3.select(container)
-            .append('svg')
-            .attr('id', 'd3-radial')
-            .attr('width', width)
-            .attr('height', height)
-            .style('position', 'fixed')
-            .style('top', '0')
-            .style('left', '0')
-            .style('width', '100vw')
-            .style('height', '100vh')
-            .style('z-index', '1');
-        
-        // Create container groups
-        this.d3RadialContainer = {
-            radials: this.d3RadialSvg.append('g').attr('class', 'radials'),
-            labels: this.d3RadialSvg.append('g').attr('class', 'labels')
-        };
-        
-        // Initialize radial data array
-        this.d3RadialData = [];
-        this.activeRadialCount = 0;
-        this.maxRadialBursts = 50; // Limit concurrent animations
-        
-        // Setup resize handling
-        window.addEventListener('resize', () => {
-            const newWidth = window.innerWidth;
-            const newHeight = window.innerHeight;
-            this.d3RadialSvg
-                .attr('width', newWidth)
-                .attr('height', newHeight);
-        });
-    }
-    
-    createD3Radial(messageData) {
-        // Limit concurrent animations to prevent performance issues
-        if (this.activeRadialCount >= this.maxRadialBursts) {
+    // D3 Radial Implementation (using original DOM bubbles with D3 animation)
+    createD3RadialBubble(messageData) {
+        // Limit concurrent animations to prevent crashes (same as original)
+        if (this.activeRadialAnimations >= this.maxRadialAnimations) {
             return;
         }
         
-        const flowWidth = window.innerWidth;
-        const flowHeight = window.innerHeight;
-        const color = this.getTopicColor(messageData.topic);
-        const customer = this.extractCustomerFromTopic(messageData.topic);
+        // Create the bubble using the original method to maintain visual consistency
+        const bubble = this.getBubbleFromPool();
+        bubble.className = 'message-bubble';
         
-        // Start at center of screen
+        // Get or create color for topic
+        const color = this.getTopicColor(messageData.topic);
+        
+        // Apply original styling (same as createMessageBubble)
+        const styles = {
+            background: `linear-gradient(135deg, ${color}, ${color}E6)`,
+            border: `2px solid ${color}`,
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+            filter: 'brightness(1.0)'
+        };
+        
+        bubble.dataset.brightness = '1.0';
+        bubble.dataset.scale = '0.3'; // Start small for radial mode
+        bubble.dataset.createdAt = Date.now().toString();
+        
+        Object.assign(bubble.style, styles);
+        
+        // Create message content with template (same as original)
+        const customer = this.extractCustomerFromTopic(messageData.topic);
+        const template = document.createElement('template');
+        template.innerHTML = `
+            <div class="message-customer">${customer}</div>
+            <div class="message-topic">${messageData.topic}</div>
+            <div class="message-time">${this.formatTime(messageData.timestamp)}</div>
+        `;
+        
+        bubble.appendChild(template.content);
+        
+        // Add click event listener
+        bubble.addEventListener('click', () => {
+            this.showMessageModal(messageData);
+        });
+        
+        // Position at center (same as original)
+        const flowWidth = this.domElements.messageFlow.clientWidth;
+        const flowHeight = this.domElements.messageFlow.clientHeight;
         const startX = flowWidth / 2;
         const startY = flowHeight / 2;
         
-        // Generate random angle for radial direction
+        // Set initial position and styling (same as original)
+        bubble.style.transition = 'none';
+        bubble.style.left = `${startX}px`;
+        bubble.style.top = `${startY}px`;
+        bubble.style.opacity = '1';
+        bubble.style.transform = 'scale(1)'; // Original starts at scale(1)
+        
+        // Set z-index (same as original)
+        bubble.style.zIndex = this.messageZIndex;
+        this.getNextZIndex();
+        
+        // Add to DOM
+        this.domElements.messageFlow.appendChild(bubble);
+        
+        // Use D3 for smooth animation instead of requestAnimationFrame
+        this.animateD3RadialBubble(bubble, startX, startY);
+        
+        // Store reference for cleanup
+        const bubbleId = Date.now() + Math.random();
+        this.activeAnimations.set(bubbleId, bubble);
+    }
+    
+    animateD3RadialBubble(bubble, startX, startY) {
+        this.activeRadialAnimations++;
+        
+        // Generate random angle and target (same as original)
         const angle = Math.random() * 2 * Math.PI;
         const maxDistance = 600;
         const targetX = startX + Math.cos(angle) * maxDistance;
         const targetY = startY + Math.sin(angle) * maxDistance;
         
-        // Create radial data object
-        const radialData = {
-            id: Date.now() + Math.random(),
-            x: startX,
-            y: startY,
-            startX: startX,
-            startY: startY,
-            targetX: targetX,
-            targetY: targetY,
-            angle: angle,
-            color: color,
-            customer: customer,
-            topic: messageData.topic,
-            time: this.formatTime(messageData.timestamp),
-            messageData: messageData,
-            startTime: Date.now()
-        };
+        const duration = 20000; // 20 seconds (same as original)
+        const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
         
-        this.d3RadialData.push(radialData);
-        this.activeRadialCount++;
+        // Create D3 selection for the bubble
+        const d3Bubble = d3.select(bubble);
         
-        // Create SVG group for this radial burst
-        const radialGroup = this.d3RadialContainer.radials
-            .append('g')
-            .attr('class', 'radial-group')
-            .attr('transform', `translate(${startX}, ${startY})`)
-            .style('z-index', this.messageZIndex); // Use reverse z-index (newer behind older)
-        
-        this.getNextZIndex(); // Update z-index counter
-        
-        // Create radial rectangle with rounded corners (start small)
-        const radialRect = radialGroup
-            .append('rect')
-            .attr('class', 'radial-rect')
-            .attr('width', 280 * 0.3) // Start at 30% scale
-            .attr('height', 80 * 0.3)
-            .attr('rx', 10 * 0.3)
-            .attr('ry', 10 * 0.3)
-            .attr('x', -140 * 0.3) // Center the rectangle
-            .attr('y', -40 * 0.3)  // Center the rectangle
-            .style('fill', color)
-            .style('stroke', color)
-            .style('stroke-width', '2px')
-            .style('opacity', 1);
-        
-        // Add text labels (also scaled down initially)
-        const textGroup = radialGroup.append('g')
-            .attr('class', 'text-group')
-            .attr('transform', 'scale(0.3)'); // Start text scaled down
-        
-        // Customer name
-        textGroup.append('text')
-            .attr('class', 'customer-text')
-            .attr('x', 0)
-            .attr('y', -10)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '18px')
-            .style('font-weight', 'bold')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(customer);
-        
-        // Topic
-        textGroup.append('text')
-            .attr('class', 'topic-text')
-            .attr('x', 0)
-            .attr('y', 8)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '14px')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(messageData.topic);
-        
-        // Time
-        textGroup.append('text')
-            .attr('class', 'time-text')
-            .attr('x', 0)
-            .attr('y', 26)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '14px')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(radialData.time);
-        
-        // Add click handler
-        radialGroup
-            .style('cursor', 'pointer')
-            .on('click', () => {
-                this.showMessageModal(messageData);
-            });
-        
-        // Store reference to the SVG group in the data
-        radialData.svgGroup = radialGroup;
-        radialData.radialRect = radialRect;
-        radialData.textGroup = textGroup;
-        
-        // Start animation
-        this.animateD3Radial(radialData);
-    }
-    
-    animateD3Radial(radialData) {
-        const duration = 20000; // 20 seconds
-        const fadeStartPoint = 0.2; // Start fading after 20% of animation
-        
-        // Animate position from center to target
-        radialData.svgGroup
+        // Animate position using D3
+        d3Bubble
             .transition()
             .duration(duration)
-            .attr('transform', `translate(${radialData.targetX}, ${radialData.targetY})`)
+            .style('left', `${targetX}px`)
+            .style('top', `${targetY}px`)
             .on('end', () => {
-                // Remove radial when animation completes
-                this.removeD3Radial(radialData);
+                // Remove bubble when position animation completes
+                this.removeRadialBubble(bubble);
             });
         
-        // Animate rectangle scaling from small (0.3) to large (1.5)
-        const minScale = 0.3;
-        const maxScale = 1.5;
-        
-        radialData.radialRect
+        // Animate scaling from 0.3 to 1.5 (same as original)
+        d3Bubble
             .transition()
             .duration(duration)
-            .attr('width', 280 * maxScale)
-            .attr('height', 80 * maxScale)
-            .attr('rx', 10 * maxScale)
-            .attr('ry', 10 * maxScale)
-            .attr('x', -140 * maxScale)
-            .attr('y', -40 * maxScale);
+            .styleTween('transform', () => {
+                const minScale = 0.3;
+                const maxScale = 1.5;
+                const interpolator = d3.interpolate(minScale, maxScale);
+                return function(t) {
+                    const scale = interpolator(t);
+                    return `scale(${scale})`;
+                };
+            });
         
-        // Animate text scaling
-        radialData.textGroup
-            .transition()
-            .duration(duration)
-            .attr('transform', `scale(${maxScale})`);
-        
-        // Handle opacity fade after fadeStartPoint
+        // Handle opacity fade after fadeStartPoint (same as original)
         const fadeDelay = duration * fadeStartPoint;
         const fadeDuration = duration * (1 - fadeStartPoint);
         
-        radialData.svgGroup
+        d3Bubble
             .transition()
             .delay(fadeDelay)
             .duration(fadeDuration)
             .style('opacity', 0)
             .on('end', () => {
-                // Alternative removal path if position animation doesn't complete
-                this.removeD3Radial(radialData);
+                // Alternative removal path
+                this.removeRadialBubble(bubble);
             });
-        
-        // Check if radial goes off screen and remove early (performance optimization)
-        const checkOffScreen = () => {
-            if (!radialData.svgGroup.node()) return; // Already removed
-            
-            const currentTransform = radialData.svgGroup.attr('transform');
-            if (!currentTransform) return;
-            
-            const match = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
-            if (!match) return;
-            
-            const currentX = parseFloat(match[1]);
-            const currentY = parseFloat(match[2]);
-            
-            const buffer = 800; // Larger buffer for radial bursts
-            const flowWidth = window.innerWidth;
-            const flowHeight = window.innerHeight;
-            
-            const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
-                               currentY < -buffer || currentY > flowHeight + buffer);
-            
-            if (isOffScreen) {
-                this.removeD3Radial(radialData);
-            } else {
-                // Continue checking every 200ms (less frequent than bubbles)
-                setTimeout(checkOffScreen, 200);
-            }
-        };
-        
-        // Start off-screen checking after a delay
-        setTimeout(checkOffScreen, 1000);
     }
     
-    removeD3Radial(radialData) {
-        if (radialData.svgGroup && radialData.svgGroup.node()) {
-            radialData.svgGroup.remove();
+    removeRadialBubble(bubble) {
+        if (bubble && bubble.parentNode) {
+            bubble.parentNode.removeChild(bubble);
+            this.returnBubbleToPool(bubble);
+            this.activeRadialAnimations--;
         }
-        
-        // Remove from data array
-        const index = this.d3RadialData.findIndex(d => d.id === radialData.id);
-        if (index > -1) {
-            this.d3RadialData.splice(index, 1);
-        }
-        
-        // Decrement active count
-        this.activeRadialCount--;
     }
 
     // Visualization switching
@@ -3341,10 +3192,6 @@ class MQTTVisualizer {
                 this.domElements.messageFlow.classList.add('starfield-mode');
             } else if (mode === 'radial') {
                 this.domElements.messageFlow.classList.add('radial-mode');
-                // Initialize D3 radial if switching to radial mode
-                if (this.visualizationMode !== 'radial') {
-                    this.initializeD3Radial();
-                }
             } else if (mode === 'bubbles') {
                 // Initialize D3 bubbles if switching to bubbles mode
                 if (this.visualizationMode !== 'bubbles') {
@@ -3408,22 +3255,10 @@ class MQTTVisualizer {
             existingD3Bubbles.remove();
         }
         
-        // Clear D3.js radial
-        const existingD3Radial = document.querySelector('#d3-radial');
-        if (existingD3Radial) {
-            existingD3Radial.remove();
-        }
-        
         // Clear D3 bubbles data
         this.d3BubblesSvg = null;
         this.d3BubblesContainer = null;
         this.d3BubblesData = [];
-        
-        // Clear D3 radial data
-        this.d3RadialSvg = null;
-        this.d3RadialContainer = null;
-        this.d3RadialData = [];
-        this.activeRadialCount = 0;
         
         // Stop D3 simulation and brightness decay
         if (this.d3Simulation) {
