@@ -3094,11 +3094,31 @@ class MQTTVisualizer {
     animateD3RadialBubble(bubble, startX, startY) {
         this.activeRadialAnimations++;
         
-        // Generate random angle and target (same as original)
+        // Generate random angle and calculate distance to screen edge
         const angle = Math.random() * 2 * Math.PI;
-        const maxDistance = 600;
-        const targetX = startX + Math.cos(angle) * maxDistance;
-        const targetY = startY + Math.sin(angle) * maxDistance;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        
+        // Calculate distance to screen edge in the chosen direction
+        const flowWidth = this.domElements.messageFlow.clientWidth;
+        const flowHeight = this.domElements.messageFlow.clientHeight;
+        
+        // Calculate how far to travel to reach screen edge plus buffer
+        let distanceToEdge;
+        if (Math.abs(dirX) > Math.abs(dirY)) {
+            // Will hit vertical edge first
+            distanceToEdge = dirX > 0 ? 
+                (flowWidth - startX + 200) / dirX : 
+                (startX + 200) / Math.abs(dirX);
+        } else {
+            // Will hit horizontal edge first  
+            distanceToEdge = dirY > 0 ? 
+                (flowHeight - startY + 200) / dirY : 
+                (startY + 200) / Math.abs(dirY);
+        }
+        
+        const targetX = startX + dirX * distanceToEdge;
+        const targetY = startY + dirY * distanceToEdge;
         
         const duration = 20000; // 20 seconds (same as original)
         const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
@@ -3106,10 +3126,11 @@ class MQTTVisualizer {
         // Create D3 selection for the bubble
         const d3Bubble = d3.select(bubble);
         
-        // Animate position using D3
+        // Animate position using D3 with linear easing for constant velocity
         d3Bubble
             .transition()
             .duration(duration)
+            .ease(d3.easeLinear)
             .style('left', `${targetX}px`)
             .style('top', `${targetY}px`)
             .on('end', () => {
@@ -3117,10 +3138,11 @@ class MQTTVisualizer {
                 this.removeRadialBubble(bubble);
             });
         
-        // Animate scaling from 0.3 to 1.5 (same as original)
+        // Animate scaling from 0.3 to 1.5 with linear easing
         d3Bubble
             .transition()
             .duration(duration)
+            .ease(d3.easeLinear)
             .styleTween('transform', () => {
                 const minScale = 0.3;
                 const maxScale = 1.5;
@@ -3139,6 +3161,7 @@ class MQTTVisualizer {
             .transition()
             .delay(fadeDelay)
             .duration(fadeDuration)
+            .ease(d3.easeLinear)
             .style('opacity', 0)
             .on('end', () => {
                 // Alternative removal path
