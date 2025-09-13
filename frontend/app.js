@@ -3099,26 +3099,16 @@ class MQTTVisualizer {
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
         
-        // Calculate distance to screen edge in the chosen direction
+        // Calculate distance to screen edge - use maximum possible distance to ensure we reach edge
         const flowWidth = this.domElements.messageFlow.clientWidth;
         const flowHeight = this.domElements.messageFlow.clientHeight;
         
-        // Calculate how far to travel to reach screen edge plus buffer
-        let distanceToEdge;
-        if (Math.abs(dirX) > Math.abs(dirY)) {
-            // Will hit vertical edge first
-            distanceToEdge = dirX > 0 ? 
-                (flowWidth - startX + 200) / dirX : 
-                (startX + 200) / Math.abs(dirX);
-        } else {
-            // Will hit horizontal edge first  
-            distanceToEdge = dirY > 0 ? 
-                (flowHeight - startY + 200) / dirY : 
-                (startY + 200) / Math.abs(dirY);
-        }
+        // Calculate distance to furthest corner from center plus buffer
+        const maxDistanceToCorner = Math.sqrt((flowWidth/2) * (flowWidth/2) + (flowHeight/2) * (flowHeight/2));
+        const totalDistance = maxDistanceToCorner + 300; // Extra buffer to ensure off-screen
         
-        const targetX = startX + dirX * distanceToEdge;
-        const targetY = startY + dirY * distanceToEdge;
+        const targetX = startX + dirX * totalDistance;
+        const targetY = startY + dirY * totalDistance;
         
         const duration = 20000; // 20 seconds (same as original)
         const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
