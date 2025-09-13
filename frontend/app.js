@@ -582,15 +582,7 @@ class MQTTVisualizer {
         const duration = 20000; // 20 seconds to cross screen
 
         if (this.visualizationMode === 'radial') {
-            // Limit concurrent animations to prevent crashes
-            if (this.activeRadialAnimations >= this.maxRadialAnimations) {
-                // Remove bubble immediately if too many active
-                if (bubble.parentNode) {
-                    bubble.parentNode.removeChild(bubble);
-                }
-                return;
-            }
-            
+            // No concurrent animation limit - test unlimited performance
             this.activeRadialAnimations++;
             
             // Manual radial animation with random angles
@@ -3019,10 +3011,7 @@ class MQTTVisualizer {
 
     // D3 Radial Implementation (using original DOM bubbles with D3 animation)
     createD3RadialBubble(messageData) {
-        // Limit concurrent animations to prevent crashes (same as original)
-        if (this.activeRadialAnimations >= this.maxRadialAnimations) {
-            return;
-        }
+        // No message cap - let's test unlimited performance
         
         // Create the bubble using the original method to maintain visual consistency
         const bubble = this.getBubbleFromPool();
@@ -3109,9 +3098,6 @@ class MQTTVisualizer {
         
         const targetX = startX + dirX * totalDistance;
         const targetY = startY + dirY * totalDistance;
-        
-        // Debug: Log the movement calculation
-        console.log(`Radial movement: Start(${startX}, ${startY}) -> Target(${targetX}, ${targetY}), Distance: ${totalDistance}, Angle: ${angle}`);
         
         const duration = 20000; // 20 seconds (same as original)
         const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
