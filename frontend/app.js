@@ -29,7 +29,7 @@ class MQTTVisualizer {
         this.maxRadialAnimations = 150; // Limit concurrent animations
         
         // Z-index tracking for depth layering
-        this.messageZIndex = 1000; // Start with high z-index
+        this.messageZIndex = 1000; // Start with high z-index (newer cards will have lower values)
         this.maxZIndex = 1000; // Maximum z-index value
         this.minZIndex = 1; // Minimum z-index value (prevent going to 0 or negative)
         
@@ -436,7 +436,9 @@ class MQTTVisualizer {
     createVisualization(messageData) {
         if (this.visualizationMode === 'network') {
             this.updateNetworkGraph(messageData);
-        } else if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial' || this.visualizationMode === 'starfield') {
+        } else if (this.visualizationMode === 'bubbles') {
+            this.updateD3Bubbles(messageData);
+        } else if (this.visualizationMode === 'radial' || this.visualizationMode === 'starfield') {
             this.createMessageBubble(messageData);
         }
     }
@@ -466,8 +468,19 @@ class MQTTVisualizer {
                 linear-gradient(135deg, ${color}, ${color}E6)
             `;
         } else if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial') {
-            // Reduce brightness by 10% for falling boxes and radial burst modes
-            styles.filter = 'brightness(0.9)';
+            // Start with full brightness, will be smoothly adjusted during animation
+            styles.filter = 'brightness(1.0)';
+            bubble.dataset.brightness = '1.0'; // Store initial brightness
+            
+            // Set initial scale based on mode
+            if (this.visualizationMode === 'radial') {
+                bubble.dataset.scale = '0.3'; // Start small for radial mode
+                styles.transform = 'scale(0.3)'; // Apply immediately
+            } else {
+                bubble.dataset.scale = '1.0'; // Normal scale for bubbles mode
+            }
+            
+            bubble.dataset.createdAt = Date.now().toString(); // Store creation time
         }
         
         Object.assign(bubble.style, styles);
@@ -503,7 +516,7 @@ class MQTTVisualizer {
             startY = flowHeight / 2;
         } else {
             // Default bubbles mode: start from opposite side of movement direction
-            const safeCardWidth = 400; // Use CSS max-width value
+            const safeCardWidth = 600; // Use CSS max-width value (increased by 50%)
             const margin = 20;
             
             if (this.bubbleDirection.y === -1) {
@@ -638,7 +651,7 @@ class MQTTVisualizer {
             const maxScreenDistance = Math.sqrt((flowWidth/2) * (flowWidth/2) + (flowHeight/2) * (flowHeight/2));
             // Add buffer to account for card size and ensure cards move completely off screen
             // Cards can be up to 400px wide and grow up to 8x scale, so need significant buffer
-            const cardMaxSize = 400 * 8; // max card width * max scale
+            const cardMaxSize = 600 * 8; // max card width * max scale (increased by 50%)
             const buffer = cardMaxSize / 2; // Half the max card size should be enough
             const maxDistance = maxScreenDistance + buffer + 200;
             const startTime = Date.now();
@@ -818,9 +831,9 @@ class MQTTVisualizer {
             .attr('width', '300%')
             .attr('height', '300%');
         shadowFilter.append('feDropShadow')
-            .attr('dx', '2')
-            .attr('dy', '2')
-            .attr('stdDeviation', '3')
+            .attr('dx', '2.5')      // 2 * 1.25 = 2.5
+            .attr('dy', '2.5')      // 2 * 1.25 = 2.5  
+            .attr('stdDeviation', '4') // 3 * 1.25 = 3.75 → 4
             .attr('flood-color', 'rgba(0,0,0,0.9)')
             .attr('flood-opacity', '1');
         
@@ -837,7 +850,7 @@ class MQTTVisualizer {
         
         // Create D3 force simulation with smoother movement (less jittery)
         this.d3Simulation = d3.forceSimulation(this.d3Nodes)
-            .velocityDecay(0.6) // Increased friction/damping (0.4 + 50% = 0.6)
+            .velocityDecay(0.75) // Increased friction/damping (0.6 + 25% = 0.75)
             .alphaDecay(0.01) // Slower cooling (default 0.0228, lower = slower settling)
             .alphaMin(0.001) // Lower minimum alpha for smoother movement
             .force('link', d3.forceLink(this.d3Links)
@@ -850,9 +863,9 @@ class MQTTVisualizer {
             .force('center', d3.forceCenter(width / 2, height / 2)
                 .strength(0.05)) // Much weaker centering force
             .force('collision', d3.forceCollide()
-                .radius(d => d.radius + 30)
-                .strength(0.4)) // Reduced collision strength
-            .force('boundary', this.createBoundaryForce(width, height))
+                .radius(d => d.radius + 25) // Slightly reduced collision radius
+                .strength(0.3)) // Further reduced collision strength to allow boundary force priority
+            .force('boundary', this.createBoundaryForce(width, height)) // Applied last to override other forces
             .on('tick', () => this.onSimulationTick());
         
         // Setup resize handling
@@ -878,8 +891,8 @@ class MQTTVisualizer {
             y: flowHeight / 2,
             fx: flowWidth / 2, // Fix position
             fy: flowHeight / 2, // Fix position
-            radius: 40,
-            baseRadius: 40, // Store original radius
+            radius: 60,
+            baseRadius: 60, // Store original radius
             color: '#4CAF50',
             label: brokerUrl,
             brightness: 1.0, // Broker stays at full brightness
@@ -891,27 +904,45 @@ class MQTTVisualizer {
     }
     
     createBoundaryForce(width, height) {
-        // Create a gentle custom force to keep nodes within viewport boundaries
+        // Create strong boundary force to keep nodes within viewport - applied after other forces
         return (alpha) => {
-            const padding = 50; // Minimum distance from edge
-            const forceStrength = 0.05; // Much gentler boundary force
-            
             this.d3Nodes.forEach(node => {
                 // Skip broker node (it's fixed in center)
                 if (node.type === 'broker') return;
                 
-                // Apply gentle boundary constraints
+                // Calculate dynamic padding based on node radius plus extra margin
+                const nodeRadius = node.radius || 20;
+                const padding = nodeRadius + 30; // Node radius plus 30px margin
+                
+                // Apply strong boundary constraints that override collision forces
+                // Use exponential force that gets stronger near boundaries
                 if (node.x < padding) {
-                    node.vx += (padding - node.x) * alpha * forceStrength;
+                    const penetration = padding - node.x;
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7); // 0.1 to 0.8
+                    node.vx += penetration * alpha * forceStrength;
+                    // Hard constraint: never allow position beyond boundary
+                    node.x = Math.max(padding, node.x);
                 }
                 if (node.x > width - padding) {
-                    node.vx += (width - padding - node.x) * alpha * forceStrength;
+                    const penetration = node.x - (width - padding);
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vx -= penetration * alpha * forceStrength;
+                    // Hard constraint: never allow position beyond boundary
+                    node.x = Math.min(width - padding, node.x);
                 }
                 if (node.y < padding) {
-                    node.vy += (padding - node.y) * alpha * forceStrength;
+                    const penetration = padding - node.y;
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vy += penetration * alpha * forceStrength;
+                    // Hard constraint: never allow position beyond boundary
+                    node.y = Math.max(padding, node.y);
                 }
                 if (node.y > height - padding) {
-                    node.vy += (height - padding - node.y) * alpha * forceStrength;
+                    const penetration = node.y - (height - padding);
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vy -= penetration * alpha * forceStrength;
+                    // Hard constraint: never allow position beyond boundary
+                    node.y = Math.min(height - padding, node.y);
                 }
             });
         };
@@ -926,8 +957,8 @@ class MQTTVisualizer {
             customerNode = {
                 id: customer,
                 type: 'customer',
-                radius: 30,
-                baseRadius: 30, // Store original radius
+                radius: 45,
+                baseRadius: 45, // Store original radius
                 color: color,
                 label: customer,
                 messageCount: 0,
@@ -949,20 +980,23 @@ class MQTTVisualizer {
         customerNode.lastActivity = Date.now();
         customerNode.brightness = 1.0; // Full brightness on new message
         customerNode.sizeScale = 1.0; // Full size on new message
+        customerNode.radius = customerNode.baseRadius * customerNode.sizeScale; // Update radius immediately
         
-        // Find or create topic node (one per unique topic)
-        const topicId = `${customer}-${topic}`;
-        let topicNode = this.d3Nodes.find(n => n.id === topicId);
+        // Find or create topic node (one per unique device, not per topic)
+        const deviceId = this.extractDeviceFromTopic(topic);
+        const topicNodeId = `${customer}-${deviceId}`;
+        let topicNode = this.d3Nodes.find(n => n.id === topicNodeId);
         if (!topicNode) {
             topicNode = {
-                id: topicId,
+                id: topicNodeId,
                 type: 'topic',
-                radius: 12,
-                baseRadius: 12, // Store original radius
+                radius: 18,
+                baseRadius: 18, // Store original radius
                 color: this.getTopicColor(topic),
-                label: topic.split('/').pop() || 'topic',
+                label: this.createTopicLabel(topic),
                 customer: customer,
-                topic: topic,
+                deviceId: deviceId, // Store device ID for grouping
+                topics: new Set([topic]), // Track all topics for this device
                 messageCount: 0,
                 lastActivity: Date.now(),
                 brightness: 1.0, // Start at full brightness
@@ -973,31 +1007,38 @@ class MQTTVisualizer {
             // Create link from customer to topic
             this.d3Links.push({
                 source: customer,
-                target: topicId,
+                target: topicNodeId,
                 distance: 120 // Increased from 80 for longer lines
             });
         }
         
         // Update topic node activity, brightness and size (don't create new nodes, just update existing)
+        // Add this topic to the set of topics handled by this device node
+        topicNode.topics.add(topic);
         topicNode.messageCount++;
         topicNode.lastActivity = Date.now();
         topicNode.brightness = 1.0; // Full brightness on new message
         topicNode.sizeScale = 1.0; // Full size on new message
+        topicNode.radius = topicNode.baseRadius * topicNode.sizeScale; // Update radius immediately
         
         // Clean up old topic nodes that haven't received messages recently
         this.cleanupOldTopics();
+        
+        // Immediately update visual properties for instant brightness/size reset
+        this.updateNodeVisualProperties();
     }
     
     startBrightnessDecay() {
-        // Update brightness every second
+        // Update brightness 10x per second for smoother transitions
         this.brightnessInterval = setInterval(() => {
             this.updateNodeBrightness();
-        }, 1000);
+            this.updateMessageBubbleBrightness();
+        }, 100);
     }
     
     updateNodeBrightness() {
         const now = Date.now();
-        const decayRate = 0.05; // Decreases by 5% per second
+        const decayRate = 0.005; // Decreases by 0.5% per update (5% per second at 10Hz)
         const minBrightness = 0.2; // Minimum 20% brightness
         const minSizeScale = 0.5; // Minimum 50% size
         
@@ -1007,20 +1048,21 @@ class MQTTVisualizer {
             // Skip broker node - it stays at full brightness and size
             if (node.type === 'broker') return;
             
-            // Calculate time since last activity (in seconds)
-            const timeSinceActivity = (now - node.lastActivity) / 1000;
+            // Calculate time since last activity (in 0.1 second units for smoother updates)
+            const timeSinceActivity = (now - node.lastActivity) / 100;
             
-            // Decay brightness and size over time
-            if (timeSinceActivity > 1) {
-                const newBrightness = Math.max(minBrightness, 1.0 - (timeSinceActivity * decayRate));
-                const newSizeScale = Math.max(minSizeScale, 1.0 - (timeSinceActivity * decayRate));
+            // Decay brightness and size over time (start after 10 updates = 1 second)
+            if (timeSinceActivity > 10) {
+                const newBrightness = Math.max(minBrightness, 1.0 - ((timeSinceActivity - 10) * decayRate));
+                const newSizeScale = Math.max(minSizeScale, 1.0 - ((timeSinceActivity - 10) * decayRate));
                 
-                if (Math.abs(node.brightness - newBrightness) > 0.01) {
+                // Use smaller threshold for smoother interpolation
+                if (Math.abs(node.brightness - newBrightness) > 0.005) {
                     node.brightness = newBrightness;
                     updated = true;
                 }
                 
-                if (Math.abs(node.sizeScale - newSizeScale) > 0.01) {
+                if (Math.abs(node.sizeScale - newSizeScale) > 0.005) {
                     node.sizeScale = newSizeScale;
                     // Update actual radius used by simulation
                     node.radius = node.baseRadius * newSizeScale;
@@ -1045,6 +1087,57 @@ class MQTTVisualizer {
             .style('opacity', d => d.brightness * 0.9); // Text slightly dimmer
     }
     
+    updateMessageBubbleBrightness() {
+        // Update brightness and smooth scaling for message bubbles in bubbles and radial modes
+        if (this.visualizationMode !== 'bubbles' && this.visualizationMode !== 'radial') {
+            return;
+        }
+        
+        const now = Date.now();
+        const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble[data-brightness]');
+        
+        bubbles.forEach(bubble => {
+            const createdAt = parseInt(bubble.dataset.createdAt || '0');
+            const currentBrightness = parseFloat(bubble.dataset.brightness || '1.0');
+            const currentScale = parseFloat(bubble.dataset.scale || '1.0');
+            
+            // Calculate age in seconds
+            const ageInSeconds = (now - createdAt) / 1000;
+            
+            // Gradually decrease brightness after 2 seconds
+            let targetBrightness = 1.0;
+            if (ageInSeconds > 2) {
+                // Decrease brightness by 40% over 10 seconds, minimum 60%
+                const decayProgress = Math.min((ageInSeconds - 2) / 10, 1);
+                targetBrightness = Math.max(0.6, 1.0 - (decayProgress * 0.4));
+            }
+            
+            // For radial mode, gradually increase scale based on age
+            let targetScale = 0.3;
+            if (this.visualizationMode === 'radial' && ageInSeconds > 0.5) {
+                // Gradually increase scale from 0.3 to 1.5 over 8 seconds
+                const scaleProgress = Math.min((ageInSeconds - 0.5) / 8, 1);
+                targetScale = 0.3 + (scaleProgress * 1.2); // 0.3 + 1.2 = 1.5 maximum
+            }
+            
+            // Smooth interpolation (move 15% towards target each update for smoother transitions)
+            const newBrightness = currentBrightness + (targetBrightness - currentBrightness) * 0.15;
+            const newScale = currentScale + (targetScale - currentScale) * 0.15;
+            
+            // Update brightness if change is significant enough
+            if (Math.abs(newBrightness - currentBrightness) > 0.01) {
+                bubble.dataset.brightness = newBrightness.toFixed(3);
+                bubble.style.filter = `brightness(${newBrightness})`;
+            }
+            
+            // Update scale if change is significant enough
+            if (Math.abs(newScale - currentScale) > 0.01) {
+                bubble.dataset.scale = newScale.toFixed(3);
+                bubble.style.transform = `scale(${newScale})`;
+            }
+        });
+    }
+    
     updateD3Simulation() {
         if (!this.d3Simulation) return;
         
@@ -1060,6 +1153,21 @@ class MQTTVisualizer {
     }
     
     onSimulationTick() {
+        // Enforce hard boundary constraints before updating visuals
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        
+        this.d3Nodes.forEach(node => {
+            if (node.type === 'broker') return; // Skip broker (fixed in center)
+            
+            const nodeRadius = node.radius || 20;
+            const padding = nodeRadius + 30;
+            
+            // Hard boundary enforcement - never allow nodes to go off screen
+            node.x = Math.max(padding, Math.min(width - padding, node.x));
+            node.y = Math.max(padding, Math.min(height - padding, node.y));
+        });
+        
         // Update node positions
         const nodeGroups = this.d3Container.nodes.selectAll('g.node')
             .data(this.d3Nodes, d => d.id);
@@ -1068,9 +1176,16 @@ class MQTTVisualizer {
             .attr('cx', d => d.x)
             .attr('cy', d => d.y);
             
-        nodeGroups.select('text')
+        const textElements = nodeGroups.select('text')
             .attr('x', d => d.x)
-            .attr('y', d => d.y + 5);
+            .attr('y', d => d.y + d.radius + 25); // Position below circle: radius + 25px margin
+            
+        // Update tspan positions to match their parent node
+        textElements.selectAll('tspan')
+            .attr('x', function() {
+                const parentNode = d3.select(this.parentNode).datum();
+                return parentNode.x;
+            });
         
         // Update link positions
         this.d3Container.links.selectAll('line')
@@ -1104,21 +1219,34 @@ class MQTTVisualizer {
             .style('opacity', d => d.brightness || 1.0);
         
         // Add labels with initial positions and brightness
-        nodeEnter.append('text')
+        const textElements = nodeEnter.append('text')
             .attr('text-anchor', 'middle')
             .attr('x', d => d.x || 0)
-            .attr('y', d => (d.y || 0) + 5)
+            .attr('y', d => (d.y || 0) + (d.radius || 20) + 25) // Position below circle: radius + 25px margin
             .attr('fill', 'white')
             .attr('font-size', d => {
-                if (d.type === 'broker') return '10px';
-                if (d.type === 'customer') return '9px';
-                if (d.type === 'topic') return '7px';
+                if (d.type === 'broker') return '23px';  // 15px * 1.5 = 22.5px → 23px
+                if (d.type === 'customer') return '20px';  // 13px * 1.5 = 19.5px → 20px
+                if (d.type === 'topic') return '15px';     // 10px * 1.5 = 15px
                 return '7px';
             })
             .attr('font-weight', d => d.type === 'broker' ? 'bold' : 'normal')
             .attr('filter', 'url(#textShadow)')
-            .style('opacity', d => (d.brightness || 1.0) * 0.9)
-            .text(d => d.label);
+            .style('opacity', d => (d.brightness || 1.0) * 0.9);
+        
+        // Handle multi-line labels with tspan elements
+        textElements.each(function(d) {
+            const textElement = d3.select(this);
+            const lines = d.label.split('\n');
+            const lineHeight = d.type === 'topic' ? 16 : 20; // Adjust line height based on node type
+            
+            lines.forEach((line, index) => {
+                textElement.append('tspan')
+                    .attr('x', 0) // Use relative positioning, parent text element handles absolute position
+                    .attr('dy', index === 0 ? 0 : lineHeight)
+                    .text(line);
+            });
+        });
         
         // Remove old nodes
         nodeGroups.exit().remove();
@@ -1142,14 +1270,15 @@ class MQTTVisualizer {
         // Create pulse animation from broker to customer to topic
         const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
         const customerNode = this.d3Nodes.find(n => n.id === customer);
-        const topicId = `${customer}-${topic}`;
-        const topicNode = this.d3Nodes.find(n => n.id === topicId);
+        const deviceId = this.extractDeviceFromTopic(topic);
+        const topicNodeId = `${customer}-${deviceId}`;
+        const topicNode = this.d3Nodes.find(n => n.id === topicNodeId);
         
         if (!brokerNode || !customerNode) return;
         
         // Create pulse circle
         const pulse = this.d3Container.pulses.append('circle')
-            .attr('r', 4)
+            .attr('r', 6)  // 4 * 1.5 = 6
             .attr('fill', customerNode.color)
             .attr('cx', brokerNode.x)
             .attr('cy', brokerNode.y)
@@ -1233,7 +1362,7 @@ class MQTTVisualizer {
             const node = {
                 x: this.brokerNode.x + Math.cos(angle) * distance,
                 y: this.brokerNode.y + Math.sin(angle) * distance,
-                radius: 30, // Scaled up for full screen
+                radius: 45, // Scaled up for full screen (increased by 50%)
                 color: color,
                 customer: customer,
                 messageCount: 0,
@@ -1442,7 +1571,7 @@ class MQTTVisualizer {
         customerText.setAttribute('y', node.y + 3);
         customerText.setAttribute('text-anchor', 'middle');
         customerText.setAttribute('fill', 'white');
-        customerText.setAttribute('font-size', '8');
+        customerText.setAttribute('font-size', '18');  // 12px * 1.5 = 18px
         customerText.setAttribute('font-weight', 'bold');
         customerText.setAttribute('filter', 'url(#textShadow)');
         customerText.textContent = node.customer.toUpperCase().substring(0, 6);
@@ -1477,7 +1606,7 @@ class MQTTVisualizer {
             const topicNode = {
                 x: optimalPosition.x,
                 y: optimalPosition.y,
-                radius: 12, // Increased from 8
+                radius: 18, // Increased from 8 (50% bigger)
                 color: customerNode.color,
                 topic: topic,
                 customer: customer,
@@ -1568,7 +1697,7 @@ class MQTTVisualizer {
     
     createPulseAlongPath(fromNode, toNode, color) {
         const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        pulse.setAttribute('r', '8'); // Larger for full screen visibility
+        pulse.setAttribute('r', '12'); // Larger for full screen visibility (8 * 1.5 = 12)
         pulse.setAttribute('fill', color);
         pulse.setAttribute('opacity', '0.9');
         pulse.setAttribute('filter', 'url(#glow)');
@@ -1597,7 +1726,7 @@ class MQTTVisualizer {
             
             // Scale pulse during animation for visual effect
             const scale = 0.8 + (Math.sin(progress * Math.PI) * 0.4);
-            pulse.setAttribute('r', 8 * scale);
+            pulse.setAttribute('r', 12 * scale);  // Base size increased from 8 to 12
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -1815,7 +1944,7 @@ class MQTTVisualizer {
             const activityLevel = Math.max(0, 1 - (timeSinceActivity / inactiveTime));
             
             // Update node size based on activity
-            const baseRadius = 30;
+            const baseRadius = 45;
             const maxRadius = 45;
             const currentRadius = baseRadius + (maxRadius - baseRadius) * activityLevel;
             
@@ -1831,7 +1960,7 @@ class MQTTVisualizer {
             const timeSinceActivity = now - node.lastActivity;
             const activityLevel = Math.max(0, 1 - (timeSinceActivity / inactiveTime));
             
-            const baseRadius = 12;
+            const baseRadius = 18;
             const maxRadius = 18;
             const currentRadius = baseRadius + (maxRadius - baseRadius) * activityLevel;
             
@@ -2040,6 +2169,9 @@ class MQTTVisualizer {
         // Bonus for being in a less crowded area
         score += this.calculateCrowdingBonus(x, y, allNodes, minSpacing * 2);
         
+        // Bonus for outward positioning from center (favor directions away from center)
+        score += this.calculateOutwardPositionBonus(x, y, customerNode);
+        
         return score;
     }
     
@@ -2080,6 +2212,31 @@ class MQTTVisualizer {
         
         // Bonus for less crowded areas (inverse relationship)
         return Math.max(0, 10 - nodesInArea * 2);
+    }
+    
+    calculateOutwardPositionBonus(x, y, customerNode) {
+        // Get screen dimensions to find center
+        const flowWidth = this.domElements.messageFlow.clientWidth;
+        const flowHeight = this.domElements.messageFlow.clientHeight;
+        const centerX = flowWidth / 2;
+        const centerY = flowHeight / 2;
+        
+        // Calculate distances from center for both the customer node and proposed position
+        const customerDistFromCenter = Math.sqrt((customerNode.x - centerX) ** 2 + (customerNode.y - centerY) ** 2);
+        const proposedDistFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        
+        // Bonus if the proposed position is farther from center than the customer node
+        if (proposedDistFromCenter > customerDistFromCenter) {
+            // Scale the bonus based on how much farther outward it is
+            const outwardDistance = proposedDistFromCenter - customerDistFromCenter;
+            const maxBonus = 20; // Maximum bonus points
+            const scaleFactor = 0.1; // How quickly bonus increases with distance
+            return Math.min(maxBonus, outwardDistance * scaleFactor);
+        }
+        
+        // Small penalty if moving inward toward center
+        const inwardDistance = customerDistFromCenter - proposedDistFromCenter;
+        return -inwardDistance * 0.05; // Small penalty for moving inward
     }
     
     pointToLineDistance(px, py, x1, y1, x2, y2) {
@@ -2148,9 +2305,10 @@ class MQTTVisualizer {
             // If no collision, we're done
             if (!hasCollision) break;
             
-            // Apply forces with boundary constraints
-            bestX = Math.max(100, Math.min(flowWidth - 100, bestX + forceX));
-            bestY = Math.max(100, Math.min(flowHeight - 100, bestY + forceY));
+            // Apply forces with boundary constraints (account for node size)
+            const dynamicMargin = Math.max(60, minSpacing); // At least 60px margin or node spacing
+            bestX = Math.max(dynamicMargin, Math.min(flowWidth - dynamicMargin, bestX + forceX));
+            bestY = Math.max(dynamicMargin, Math.min(flowHeight - dynamicMargin, bestY + forceY));
         }
         
         return { x: bestX, y: bestY };
@@ -2605,6 +2763,257 @@ class MQTTVisualizer {
         });
     }
 
+    // D3 Bubbles Implementation
+    updateD3Bubbles(messageData) {
+        if (!this.d3BubblesSvg) {
+            this.initializeD3Bubbles();
+        }
+        
+        // Create a new bubble node for this message
+        this.createD3Bubble(messageData);
+    }
+    
+    initializeD3Bubbles() {
+        // Clear existing content
+        const existingSvg = this.domElements.messageFlow.querySelector('#d3-bubbles');
+        if (existingSvg) {
+            existingSvg.remove();
+        }
+        
+        // Remove any existing message bubbles
+        const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble');
+        bubbles.forEach(bubble => bubble.remove());
+        
+        // Clear any existing D3 network
+        if (this.d3Svg) {
+            this.d3Svg.remove();
+            this.d3Svg = null;
+            this.d3Simulation = null;
+        }
+        
+        // Create D3 SVG for bubbles
+        const container = this.domElements.messageFlow;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        
+        this.d3BubblesSvg = d3.select(container)
+            .append('svg')
+            .attr('id', 'd3-bubbles')
+            .attr('width', width)
+            .attr('height', height)
+            .style('position', 'fixed')
+            .style('top', '0')
+            .style('left', '0')
+            .style('width', '100vw')
+            .style('height', '100vh')
+            .style('z-index', '1');
+        
+        // Create container groups
+        this.d3BubblesContainer = {
+            bubbles: this.d3BubblesSvg.append('g').attr('class', 'bubbles'),
+            labels: this.d3BubblesSvg.append('g').attr('class', 'labels')
+        };
+        
+        // Initialize bubbles data array
+        this.d3BubblesData = [];
+        
+        // Setup resize handling
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            this.d3BubblesSvg
+                .attr('width', newWidth)
+                .attr('height', newHeight);
+        });
+    }
+    
+    createD3Bubble(messageData) {
+        const flowWidth = window.innerWidth;
+        const flowHeight = window.innerHeight;
+        const color = this.getTopicColor(messageData.topic);
+        const customer = this.extractCustomerFromTopic(messageData.topic);
+        
+        // Calculate starting position based on direction
+        let startX, startY;
+        const margin = 100;
+        const cardWidth = 300; // Approximate bubble width
+        
+        if (this.bubbleDirection.y === -1) {
+            // Moving up: start from bottom
+            startX = margin + Math.random() * (flowWidth - cardWidth - 2 * margin);
+            startY = flowHeight + 100;
+        } else if (this.bubbleDirection.y === 1) {
+            // Moving down: start from top
+            startX = margin + Math.random() * (flowWidth - cardWidth - 2 * margin);
+            startY = -100;
+        } else if (this.bubbleDirection.x === -1) {
+            // Moving left: start from right
+            startX = flowWidth + 100;
+            startY = margin + Math.random() * (flowHeight - 2 * margin);
+        } else if (this.bubbleDirection.x === 1) {
+            // Moving right: start from left
+            startX = -cardWidth - 100;
+            startY = margin + Math.random() * (flowHeight - 2 * margin);
+        }
+        
+        // Create bubble data object
+        const bubbleData = {
+            id: Date.now() + Math.random(),
+            x: startX,
+            y: startY,
+            startX: startX,
+            startY: startY,
+            color: color,
+            customer: customer,
+            topic: messageData.topic,
+            time: this.formatTime(messageData.timestamp),
+            messageData: messageData,
+            startTime: Date.now()
+        };
+        
+        this.d3BubblesData.push(bubbleData);
+        
+        // Create SVG group for this bubble
+        const bubbleGroup = this.d3BubblesContainer.bubbles
+            .append('g')
+            .attr('class', 'bubble-group')
+            .attr('transform', `translate(${startX}, ${startY})`);
+        
+        // Create bubble rectangle with rounded corners
+        const bubbleRect = bubbleGroup
+            .append('rect')
+            .attr('class', 'bubble-rect')
+            .attr('width', 280)
+            .attr('height', 80)
+            .attr('rx', 10)
+            .attr('ry', 10)
+            .attr('x', -140) // Center the rectangle
+            .attr('y', -40)  // Center the rectangle
+            .style('fill', color)
+            .style('stroke', color)
+            .style('stroke-width', '2px')
+            .style('opacity', 1);
+        
+        // Add text labels
+        const textGroup = bubbleGroup.append('g').attr('class', 'text-group');
+        
+        // Customer name
+        textGroup.append('text')
+            .attr('class', 'customer-text')
+            .attr('x', 0)
+            .attr('y', -10)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '18px')
+            .style('font-weight', 'bold')
+            .style('fill', '#fff')
+            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
+            .text(customer);
+        
+        // Topic
+        textGroup.append('text')
+            .attr('class', 'topic-text')
+            .attr('x', 0)
+            .attr('y', 8)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('fill', '#fff')
+            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
+            .text(messageData.topic);
+        
+        // Time
+        textGroup.append('text')
+            .attr('class', 'time-text')
+            .attr('x', 0)
+            .attr('y', 26)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('fill', '#fff')
+            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
+            .text(bubbleData.time);
+        
+        // Add click handler
+        bubbleGroup
+            .style('cursor', 'pointer')
+            .on('click', () => {
+                this.showMessageModal(messageData);
+            });
+        
+        // Store reference to the SVG group in the data
+        bubbleData.svgGroup = bubbleGroup;
+        
+        // Start animation
+        this.animateD3Bubble(bubbleData);
+    }
+    
+    animateD3Bubble(bubbleData) {
+        const duration = 20000; // 20 seconds
+        const flowWidth = window.innerWidth;
+        const flowHeight = window.innerHeight;
+        const buffer = 500;
+        
+        // Calculate target position based on direction
+        let targetX, targetY;
+        
+        if (this.bubbleDirection.x !== 0) {
+            // Horizontal movement
+            const travelDistance = flowWidth + buffer * 2;
+            targetX = bubbleData.startX + (this.bubbleDirection.x * travelDistance);
+            targetY = bubbleData.startY; // No vertical movement
+        } else {
+            // Vertical movement
+            const travelDistance = flowHeight + buffer * 2;
+            targetX = bubbleData.startX; // No horizontal movement
+            targetY = bubbleData.startY + (this.bubbleDirection.y * travelDistance);
+        }
+        
+        // Use D3 transition for smooth animation
+        bubbleData.svgGroup
+            .transition()
+            .duration(duration)
+            .attr('transform', `translate(${targetX}, ${targetY})`)
+            .on('end', () => {
+                // Remove bubble when animation completes
+                this.removeD3Bubble(bubbleData);
+            });
+        
+        // Check if bubble goes off screen and remove early
+        const checkOffScreen = () => {
+            const currentTransform = bubbleData.svgGroup.attr('transform');
+            if (!currentTransform) return;
+            
+            const match = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+            if (!match) return;
+            
+            const currentX = parseFloat(match[1]);
+            const currentY = parseFloat(match[2]);
+            
+            const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
+                               currentY < -buffer || currentY > flowHeight + buffer);
+            
+            if (isOffScreen) {
+                this.removeD3Bubble(bubbleData);
+            } else {
+                // Continue checking
+                setTimeout(checkOffScreen, 100);
+            }
+        };
+        
+        // Start off-screen checking
+        setTimeout(checkOffScreen, 100);
+    }
+    
+    removeD3Bubble(bubbleData) {
+        if (bubbleData.svgGroup) {
+            bubbleData.svgGroup.remove();
+        }
+        
+        // Remove from data array
+        const index = this.d3BubblesData.findIndex(d => d.id === bubbleData.id);
+        if (index > -1) {
+            this.d3BubblesData.splice(index, 1);
+        }
+    }
+
     // Visualization switching
     switchVisualization(mode) {
         if (!mode) {
@@ -2634,7 +3043,7 @@ class MQTTVisualizer {
             
             // Initialize network graph if switching to network mode
             if (this.visualizationMode !== 'network') {
-                this.initializeNetworkGraph();
+                this.initializeD3Network();
             }
         } else if (mode === 'bubbles' || mode === 'radial' || mode === 'starfield') {
             this.domElements.messageFlow.style.display = 'block';
@@ -2644,8 +3053,12 @@ class MQTTVisualizer {
                 this.domElements.messageFlow.classList.add('starfield-mode');
             } else if (mode === 'radial') {
                 this.domElements.messageFlow.classList.add('radial-mode');
+            } else if (mode === 'bubbles') {
+                // Initialize D3 bubbles if switching to bubbles mode
+                if (this.visualizationMode !== 'bubbles') {
+                    this.initializeD3Bubbles();
+                }
             }
-            // bubbles mode doesn't need a special class
         }
     }
     
@@ -2696,6 +3109,17 @@ class MQTTVisualizer {
         if (existingD3Svg) {
             existingD3Svg.remove();
         }
+        
+        // Clear D3.js bubbles
+        const existingD3Bubbles = document.querySelector('#d3-bubbles');
+        if (existingD3Bubbles) {
+            existingD3Bubbles.remove();
+        }
+        
+        // Clear D3 bubbles data
+        this.d3BubblesSvg = null;
+        this.d3BubblesContainer = null;
+        this.d3BubblesData = [];
         
         // Stop D3 simulation and brightness decay
         if (this.d3Simulation) {
@@ -2827,6 +3251,20 @@ class MQTTVisualizer {
 
     extractCustomerFromTopic(topic) {
         return topic.split('/')[0] || topic;
+    }
+    
+    createTopicLabel(topic) {
+        const parts = topic.split('/');
+        
+        // Show only device ID (2nd level) 
+        return parts[1] || parts[parts.length - 1] || 'topic';
+    }
+    
+    extractDeviceFromTopic(topic) {
+        const parts = topic.split('/');
+        
+        // Return device ID (2nd level) for grouping
+        return parts[1] || parts[parts.length - 1] || 'device';
     }
 
     // UI Updates - using cached DOM elements for better performance
