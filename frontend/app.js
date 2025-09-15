@@ -1085,18 +1085,18 @@ class NetworkAnimation {
         this.layoutCalculator = layoutCalculator;
         this.elementSystem = elementSystem;
 
-        // Default options
+        // Default options - tuned for minimal jitter with stable positioning
         this.options = {
-            velocityDecay: 0.75,
-            alphaDecay: 0.01,
-            alphaMin: 0.001,
+            velocityDecay: 0.8,       // Increased damping to reduce oscillations
+            alphaDecay: 0.01,         // Slower cooling for more stable settling
+            alphaMin: 0.001,          // Lower minimum for smoother final state
             linkDistance: 250,
-            linkStrength: 0.2,
-            chargeStrength: -800,
-            chargeDistanceMax: 400,
-            centerStrength: 0.05,
-            collisionRadius: 25,
-            collisionStrength: 1.0,
+            linkStrength: 0.3,        // Stronger links for more definitive positioning
+            chargeStrength: -800,     // Increased repulsion to prevent overlapping
+            chargeDistanceMax: 400,   // Increased range for better separation
+            centerStrength: 0.01,     // Minimal centering to avoid force conflicts
+            collisionRadius: 50,      // Larger collision radius for more separation
+            collisionStrength: 0.7,   // Stronger collisions to maintain boundaries
             boundaryPadding: 30,
             ...options
         };
@@ -1114,6 +1114,44 @@ class NetworkAnimation {
         this.topicNodes = new Map();
     }
 
+    // Calculate fixed distances
+    calculateDistance(linkType = 'broker-customer') {
+        if (linkType === 'customer-topic') {
+            // Keep customer-topic distances short and fixed
+            return 80;
+        }
+        // Fixed distance for broker-customer links
+        return this.options.linkDistance;
+    }
+
+    // Update all link distances with fixed values
+    updateLinkDistances() {
+        if (!this.simulation) return;
+
+        this.links.forEach(link => {
+            if (link.source === 'broker' || (link.source && link.source.id === 'broker')) {
+                // Broker to customer link - fixed distance
+                link.distance = this.calculateDistance('broker-customer');
+            } else {
+                // Customer to topic link - fixed distance
+                link.distance = this.calculateDistance('customer-topic');
+            }
+        });
+
+        // Update the simulation with new distances
+        this.simulation.force('link')
+            .distance(d => {
+                if (d.type === 'customer-topic') {
+                    return this.calculateDistance('customer-topic');
+                }
+                // Fixed distance for broker-customer links
+                return this.calculateDistance('broker-customer');
+            });
+
+        // Restart simulation to apply changes
+        this.simulation.alpha(0.3).restart();
+    }
+
     // Initialize the network simulation
     initialize() {
         console.log('NetworkAnimation: Initializing force simulation');
@@ -1129,10 +1167,12 @@ class NetworkAnimation {
             .force('link', d3.forceLink(this.links)
                 .id(d => d.id)
                 .distance(d => {
-                    // Shorter distance for customer-topic links to keep them together
-                    if (d.type === 'customer-topic') return 80;
-                    // Normal distance for broker-customer links
-                    return this.options.linkDistance;
+                    // Use fixed distances for all links
+                    if (d.type === 'customer-topic') {
+                        return this.calculateDistance('customer-topic');
+                    }
+                    // Fixed distance for broker-customer links
+                    return this.calculateDistance('broker-customer');
                 })
                 .strength(d => {
                     // Stronger force for customer-topic links to keep them together
@@ -1510,9 +1550,43 @@ class NetworkAnimation {
         nodeSelection.exit().remove();
     }
 
-    // Animation tick handler
+    // Animation tick handler with position smoothing
     onTick() {
         if (!this.linkGroups || !this.nodeGroups) return;
+
+        // Apply adaptive position smoothing - less smoothing for large movements
+        this.nodes.forEach(node => {
+            if (node.prevX !== undefined && node.prevY !== undefined) {
+                // Calculate movement distance
+                const dx = node.x - node.prevX;
+                const dy = node.y - node.prevY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Adaptive smoothing: fast for large moves, heavy damping for micro-jitter
+                let baseSmoothingFactor;
+                if (distance > 10) {
+                    baseSmoothingFactor = 0.6;  // Fast for large repositioning
+                } else if (distance > 2) {
+                    baseSmoothingFactor = 0.3;  // Moderate for medium movements
+                } else {
+                    baseSmoothingFactor = 0.1;  // Heavy damping for micro-jitter
+                }
+
+                // Smooth interpolation between previous and current position
+                const newX = node.prevX + dx * baseSmoothingFactor;
+                const newY = node.prevY + dy * baseSmoothingFactor;
+
+                // Only update if movement is above a minimum threshold to prevent micro-updates
+                const minMovement = 0.1;
+                if (Math.abs(node.x - newX) > minMovement || Math.abs(node.y - newY) > minMovement) {
+                    node.x = newX;
+                    node.y = newY;
+                }
+            }
+            // Store previous position for next frame
+            node.prevX = node.x;
+            node.prevY = node.y;
+        });
 
         // Update link positions
         this.linkGroups.selectAll('line')
@@ -1554,6 +1628,9 @@ class NetworkAnimation {
     cleanupOldNodes(maxAge = 30000) {
         // In network mode, nodes should persist and only become smaller/dimmer
         // No cleanup - let decay system handle visibility through brightness/size
+
+        // However, if we ever do clean up nodes in the future, we should update distances
+        // this.updateLinkDistances();
         return;
     }
 
@@ -1585,6 +1662,54 @@ class NetworkAnimation {
         }
     }
 
+    // Apply brightness decay with grace period and smooth transitions
+    applyDecayImproved(decayRate = 0.99) {
+        const now = Date.now();
+        const gracePeriod = 3000; // 3 seconds grace period before decay starts
+        const smoothingFactor = 0.1; // For smooth interpolation
+        let updated = false;
+
+        this.nodes.forEach(node => {
+            if (node.type === 'broker') return; // Skip broker
+
+            // Check if grace period has passed since last activity
+            const timeSinceActivity = now - (node.lastActivity || now);
+            if (timeSinceActivity < gracePeriod) {
+                // Within grace period - maintain full brightness and size
+                if (node.brightness < 1.0) {
+                    node.brightness = Math.min(1.0, node.brightness + smoothingFactor);
+                    updated = true;
+                }
+                if (node.sizeScale < 1.0) {
+                    node.sizeScale = Math.min(1.0, node.sizeScale + smoothingFactor);
+                    updated = true;
+                }
+                return;
+            }
+
+            // Apply brightness decay (fade to 30% but still visible)
+            if (node.brightness > 0.3) {
+                const targetBrightness = Math.max(0.3, node.brightness * decayRate);
+                node.brightness = node.brightness - (node.brightness - targetBrightness) * smoothingFactor;
+                updated = true;
+            }
+
+            // Apply size decay (shrink to 33% but still visible)
+            if (node.sizeScale > 0.33) {
+                const targetSize = Math.max(0.33, node.sizeScale * decayRate);
+                node.sizeScale = node.sizeScale - (node.sizeScale - targetSize) * smoothingFactor;
+                updated = true;
+            }
+        });
+
+        if (updated && this.nodeGroups) {
+            // Update visual properties with smooth transitions
+            this.nodeGroups.selectAll('circle')
+                .style('opacity', d => d.brightness)
+                .attr('r', d => d.radius * d.sizeScale);
+        }
+    }
+
     // Stop and cleanup
     stop() {
         if (this.simulation) {
@@ -1599,6 +1724,410 @@ class NetworkAnimation {
         this.brokerNode = null;
 
         console.log('NetworkAnimation: Stopped and cleaned up');
+    }
+}
+
+/**
+ * ClustersAnimation - D3 Force-based clustered bubbles visualization
+ * Groups messages by customer and visualizes as clustered bubbles
+ */
+class ClustersAnimation {
+    constructor(containerGroup, layoutCalculator, elementSystem, options = {}) {
+        this.containerGroup = containerGroup;
+        this.layoutCalculator = layoutCalculator;
+        this.elementSystem = elementSystem;
+
+        // Default options for clusters visualization
+        this.options = {
+            maxNodes: 200,            // Maximum number of nodes to display
+            clusterStrength: 0.8,     // Increased strength for better clustering
+            collisionPadding: 2,      // Padding within same cluster
+            interClusterPadding: 6,   // Padding between different clusters
+            velocityDecay: 0.8,       // Moderate damping for responsive movement
+            alphaDecay: 0.02,         // Faster settling
+            alphaMin: 0.005,          // Higher minimum for more active simulation
+            nodeRadius: {
+                min: 8,
+                max: 25,
+                scale: 1.2             // Scaling factor based on message count
+            },
+            ...options
+        };
+
+        // Cluster state
+        this.nodes = [];
+        this.clusters = new Map();        // customer -> cluster info
+        this.customerNodes = new Map();   // customer -> nodes array
+        this.simulation = null;
+        this.nodeGroups = null;
+
+        // Color mapping
+        this.colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+    }
+
+    // Initialize the clusters simulation
+    initialize() {
+        console.log('ClustersAnimation: Initializing clustered bubbles simulation');
+
+        // Create custom forces
+        const forceCluster = this.createClusterForce();
+        const forceCollide = this.createCollisionForce();
+
+        // Create D3 force simulation optimized for clusters
+        this.simulation = d3.forceSimulation(this.nodes)
+            .velocityDecay(this.options.velocityDecay)
+            .alphaDecay(this.options.alphaDecay)
+            .alphaMin(this.options.alphaMin)
+            .force('cluster', forceCluster)
+            .force('collide', forceCollide)
+            .force('center', d3.forceCenter(0, 0).strength(0.05)) // Weaker center force
+            .on('tick', () => this.onTick());
+
+        // Get screen dimensions and set up coordinate system
+        const dimensions = this.layoutCalculator.getEffectiveDimensions();
+        this.screenCenterX = dimensions.width / 2;
+        this.screenCenterY = dimensions.height / 2;
+
+        console.log('ClustersAnimation: Screen center set to', { centerX: this.screenCenterX, centerY: this.screenCenterY });
+
+        // Update center force to use actual screen center
+        this.simulation.force('center', d3.forceCenter(this.screenCenterX, this.screenCenterY).strength(0.05));
+
+        // Create SVG group for nodes
+        this.nodeGroups = this.containerGroup.append('g').attr('class', 'cluster-nodes');
+
+        console.log('ClustersAnimation: Simulation initialized');
+    }
+
+    // Create custom cluster force - attracts nodes to their cluster center
+    createClusterForce() {
+        return () => {
+            const alpha = this.simulation ? this.simulation.alpha() : 0;
+            const strength = this.options.clusterStrength * alpha;
+
+            this.nodes.forEach(node => {
+                if (!node.cluster) return;
+
+                const cluster = this.clusters.get(node.cluster);
+                if (!cluster) {
+                    console.log('No cluster found for node:', node.cluster);
+                    return;
+                }
+
+                // Use cluster target position instead of calculated centroid for stronger clustering
+                const targetX = cluster.targetX || 0;
+                const targetY = cluster.targetY || 0;
+
+                // Apply force towards cluster center
+                const dx = targetX - node.x;
+                const dy = targetY - node.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > 0) {
+                    const force = strength * (node.radius || 10);
+                    node.vx += (dx / distance) * force;
+                    node.vy += (dy / distance) * force;
+                }
+            });
+        };
+    }
+
+    // Create custom collision force with different padding for same vs different clusters
+    createCollisionForce() {
+        return d3.forceCollide()
+            .radius(node => {
+                const baseRadius = node.radius || 10;
+                // Add padding based on cluster relationship
+                return baseRadius + this.options.collisionPadding;
+            })
+            .strength(0.7)
+            .iterations(2);
+    }
+
+    // Calculate weighted centroid for a cluster
+    calculateClusterCentroid(clusterId) {
+        const clusterNodes = this.nodes.filter(n => n.cluster === clusterId);
+        if (clusterNodes.length === 0) return null;
+
+        let totalWeight = 0;
+        let weightedX = 0;
+        let weightedY = 0;
+
+        clusterNodes.forEach(node => {
+            const weight = Math.pow(node.radius || 10, 2); // Weight by area
+            totalWeight += weight;
+            weightedX += node.x * weight;
+            weightedY += node.y * weight;
+        });
+
+        return {
+            x: weightedX / totalWeight,
+            y: weightedY / totalWeight
+        };
+    }
+
+    // Process incoming message and update clusters
+    processMessage(messageData, customerColor, topicColor) {
+        console.log('ClustersAnimation processMessage called with:', { messageData, customerColor, topicColor });
+
+        const customer = this.extractCustomerFromTopic(messageData.topic);
+        const deviceId = this.extractDeviceFromTopic(messageData.topic);
+        const nodeId = `${customer}-${deviceId}`;
+
+        console.log('Extracted customer:', customer, 'deviceId:', deviceId, 'nodeId:', nodeId);
+
+        // Find or create node
+        let node = this.nodes.find(n => n.id === nodeId);
+        console.log('Found existing node:', node);
+
+        if (!node) {
+            // Create new node
+            const radius = this.calculateNodeRadius(1);
+            node = {
+                id: nodeId,
+                customer: customer,
+                device: deviceId,
+                cluster: customer,
+                radius: radius,
+                color: customerColor,
+                messageCount: 1,
+                lastActivity: Date.now(),
+                // Random initial position around screen center
+                x: (this.screenCenterX || 0) + (Math.random() - 0.5) * 200,
+                y: (this.screenCenterY || 0) + (Math.random() - 0.5) * 200,
+                vx: 0,
+                vy: 0
+            };
+
+            console.log('Creating new cluster node:', node);
+
+            this.nodes.push(node);
+            this.ensureClusterExists(customer, customerColor);
+
+            console.log('Total nodes after creation:', this.nodes.length);
+
+            // Limit total nodes
+            if (this.nodes.length > this.options.maxNodes) {
+                this.removeOldestNode();
+            }
+        } else {
+            // Update existing node
+            node.messageCount++;
+            node.lastActivity = Date.now();
+            node.radius = this.calculateNodeRadius(node.messageCount);
+        }
+
+        // Update cluster info
+        this.updateCluster(customer, customerColor);
+
+        // Update simulation
+        this.updateSimulation();
+
+        return node;
+    }
+
+    // Calculate node radius based on message count
+    calculateNodeRadius(messageCount) {
+        const { min, max, scale } = this.options.nodeRadius;
+        const scaledSize = min + (messageCount - 1) * scale;
+        return Math.min(max, scaledSize);
+    }
+
+    // Ensure cluster exists in the clusters map
+    ensureClusterExists(customer, color) {
+        if (!this.clusters.has(customer)) {
+            // Position clusters in a rough circle around screen center
+            const clusterCount = this.clusters.size;
+            const angle = (clusterCount * 137.5) * (Math.PI / 180); // Golden angle
+            const distance = 150 + clusterCount * 50; // Larger separation between clusters
+
+            // Position relative to screen center
+            const cluster = {
+                id: customer,
+                color: color,
+                targetX: (this.screenCenterX || 0) + Math.cos(angle) * distance,
+                targetY: (this.screenCenterY || 0) + Math.sin(angle) * distance,
+                nodeCount: 0
+            };
+
+            console.log(`Creating cluster for ${customer} at position (${cluster.targetX.toFixed(1)}, ${cluster.targetY.toFixed(1)}) relative to center (${this.screenCenterX}, ${this.screenCenterY})`);
+
+            this.clusters.set(customer, cluster);
+        }
+    }
+
+    // Update cluster information
+    updateCluster(customer, color) {
+        const cluster = this.clusters.get(customer);
+        if (cluster) {
+            cluster.color = color;
+            cluster.nodeCount = this.nodes.filter(n => n.cluster === customer).length;
+        }
+    }
+
+    // Remove oldest node when exceeding maximum
+    removeOldestNode() {
+        let oldestNode = null;
+        let oldestTime = Date.now();
+
+        this.nodes.forEach(node => {
+            if (node.lastActivity < oldestTime) {
+                oldestTime = node.lastActivity;
+                oldestNode = node;
+            }
+        });
+
+        if (oldestNode) {
+            const index = this.nodes.indexOf(oldestNode);
+            this.nodes.splice(index, 1);
+        }
+    }
+
+    // Update simulation with new data
+    updateSimulation() {
+        if (!this.simulation) return;
+
+        this.simulation.nodes(this.nodes);
+        this.simulation.alpha(0.3).restart();
+
+        // Update visual representation
+        this.updateVisuals();
+    }
+
+    // Update visual representation
+    updateVisuals() {
+        if (!this.nodeGroups) return;
+
+        console.log(`ClustersAnimation: Updating visuals for ${this.nodes.length} nodes`);
+
+        // Bind data to nodes
+        const nodeSelection = this.nodeGroups.selectAll('g.cluster-node')
+            .data(this.nodes, d => d.id);
+
+        console.log('Node selection size:', nodeSelection.size());
+
+        // Remove exiting nodes
+        nodeSelection.exit()
+            .transition()
+            .duration(300)
+            .style('opacity', 0)
+            .attr('transform', d => `translate(${d.x}, ${d.y}) scale(0)`)
+            .remove();
+
+        // Add entering nodes
+        const nodeEnter = nodeSelection.enter()
+            .append('g')
+            .attr('class', 'cluster-node')
+            .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`)
+            .style('opacity', 0);
+
+        // Add circle to each node - use customer color for consistency within cluster
+        nodeEnter.append('circle')
+            .attr('r', d => d.radius)
+            .attr('fill', d => d.color) // This should be the customer color
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .style('cursor', 'pointer');
+
+        // Add label to each node - always show device ID
+        nodeEnter.append('text')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.3em')
+            .attr('fill', '#fff')
+            .attr('font-size', '10px')
+            .attr('font-weight', 'bold')
+            .text(d => d.device.length > 8 ? d.device.substring(0, 8) : d.device);
+
+        // Animate entering nodes
+        nodeEnter.transition()
+            .duration(500)
+            .delay((d, i) => i * 20)
+            .style('opacity', 1)
+            .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0}) scale(1)`);
+
+        // Update existing nodes
+        const mergedNodes = nodeSelection.merge(nodeEnter);
+
+        mergedNodes
+            .select('circle')
+            .transition()
+            .duration(200)
+            .attr('r', d => d.radius)
+            .attr('fill', d => d.color);
+
+        // Update labels - always show device ID
+        mergedNodes
+            .select('text')
+            .text(d => d.device.length > 8 ? d.device.substring(0, 8) : d.device);
+    }
+
+    // Animation tick handler
+    onTick() {
+        if (!this.nodeGroups) return;
+
+        // Update node positions
+        this.nodeGroups.selectAll('g.cluster-node')
+            .attr('transform', d => `translate(${d.x}, ${d.y})`);
+    }
+
+    // Update dimensions when layout changes
+    updateDimensions() {
+        if (!this.simulation || !this.layoutCalculator) return;
+
+        const dimensions = this.layoutCalculator.getEffectiveDimensions();
+        this.screenCenterX = dimensions.width / 2;
+        this.screenCenterY = dimensions.height / 2;
+
+        console.log('ClustersAnimation: Updating dimensions to', { centerX: this.screenCenterX, centerY: this.screenCenterY, dimensions });
+
+        // Update center force
+        this.simulation.force('center', d3.forceCenter(this.screenCenterX, this.screenCenterY).strength(0.05));
+    }
+
+    // Utility function to extract customer from topic
+    extractCustomerFromTopic(topic) {
+        if (!topic) return 'unknown';
+        const parts = topic.split('/');
+        return parts[0] || 'unknown';
+    }
+
+    // Utility function to extract device from topic
+    extractDeviceFromTopic(topic) {
+        if (!topic) return 'device';
+        const parts = topic.split('/');
+
+        // For topics like "customer/device/sensor" or "customer-deviceID"
+        if (parts.length > 1) {
+            // Use the second part as device ID
+            return parts[1];
+        } else {
+            // For single-part topics, look for device ID after dash
+            const lastPart = parts[0] || 'device';
+            const deviceMatch = lastPart.match(/-([^-]+)$/);
+            const deviceId = deviceMatch ? deviceMatch[1] : lastPart.substring(0, 8);
+            console.log(`Extracted device ID "${deviceId}" from topic "${topic}"`);
+            return deviceId;
+        }
+    }
+
+    // Stop and cleanup
+    stop() {
+        if (this.simulation) {
+            this.simulation.stop();
+            this.simulation = null;
+        }
+
+        if (this.nodeGroups) {
+            this.nodeGroups.remove();
+            this.nodeGroups = null;
+        }
+
+        // Clear data
+        this.nodes = [];
+        this.clusters.clear();
+        this.customerNodes.clear();
+
+        console.log('ClustersAnimation: Stopped and cleaned up');
     }
 }
 
@@ -2157,9 +2686,15 @@ class ModeSwitchingManager {
             this.visualizer.networkAnimation = null;
         }
 
+        // Stop ClustersAnimation if it exists
+        if (this.visualizer.clustersAnimation) {
+            this.visualizer.clustersAnimation.stop();
+            this.visualizer.clustersAnimation = null;
+        }
+
         // Remove mode-specific CSS classes
         this.visualizer.domElements.messageFlow.classList.remove(
-            'starfield-mode', 'radial-mode', 'network-mode', 'bubbles-mode'
+            'starfield-mode', 'radial-mode', 'network-mode', 'bubbles-mode', 'clusters-mode'
         );
 
         // Clear any mode-specific timers or intervals
@@ -2202,6 +2737,8 @@ class ModeSwitchingManager {
             this.initializeUnifiedMode(newMode);
         } else if (newMode === 'network') {
             this.initializeNetworkMode();
+        } else if (newMode === 'clusters') {
+            this.initializeClustersMode();
         }
 
         // Update layout for new mode
@@ -2228,9 +2765,9 @@ class ModeSwitchingManager {
         console.log(`ModeSwitchingManager: Unified mode ${mode} initialized`);
     }
 
-    // Initialize network mode using unified container and NetworkAnimation
+    // Initialize network mode using NetworkAnimation with proper brightness decay
     initializeNetworkMode() {
-        console.log('ModeSwitchingManager: Initializing network mode with unified architecture');
+        console.log('ModeSwitchingManager: Initializing network mode with NetworkAnimation');
 
         // Initialize unified container for network mode
         if (!this.visualizer.unifiedContainer) {
@@ -2251,19 +2788,56 @@ class ModeSwitchingManager {
         // Initialize the network simulation
         this.visualizer.networkAnimation.initialize();
 
-        // Set up brightness decay interval for network mode
+        // Start brightness decay with improved minimum brightness
+        this.startNetworkBrightnessDecay();
+
+        console.log('ModeSwitchingManager: Network mode initialized');
+    }
+
+    // Initialize clusters mode using ClustersAnimation
+    initializeClustersMode() {
+        console.log('ModeSwitchingManager: Initializing clusters mode');
+
+        // Initialize unified container for clusters mode
+        if (!this.visualizer.unifiedContainer) {
+            this.visualizer.unifiedContainer = new UnifiedContainer(this.visualizer.domElements.messageFlow);
+            console.log('Created new unified container for clusters');
+        }
+
+        // Initialize container with layout calculator
+        this.visualizer.unifiedContainer.initialize(this.visualizer.layoutCalculator);
+        console.log('Initialized unified container with layout calculator');
+
+        // Create ClustersAnimation instance
+        const containerGroup = this.visualizer.unifiedContainer.getContainer();
+        console.log('Got container group:', containerGroup);
+
+        this.visualizer.clustersAnimation = new ClustersAnimation(
+            containerGroup,
+            this.visualizer.layoutCalculator,
+            this.visualizer.elementSystem
+        );
+        console.log('Created ClustersAnimation instance:', this.visualizer.clustersAnimation);
+
+        // Initialize the clusters simulation
+        this.visualizer.clustersAnimation.initialize();
+
+        console.log('ModeSwitchingManager: Clusters mode initialized successfully');
+    }
+
+    // Start brightness decay for network mode with improved minimum brightness
+    startNetworkBrightnessDecay() {
+        // Clear any existing interval
         if (this.visualizer.brightnessInterval) {
             clearInterval(this.visualizer.brightnessInterval);
         }
 
+        // Start brightness decay with improved minimum (0.3 instead of 0.05)
         this.visualizer.brightnessInterval = setInterval(() => {
             if (this.visualizer.visualizationMode === 'network' && this.visualizer.networkAnimation) {
-                this.visualizer.networkAnimation.applyDecay(0.99);
-                this.visualizer.networkAnimation.cleanupOldNodes(30000);
+                this.visualizer.networkAnimation.applyDecayImproved(0.995); // 25% slower decay (was 0.99)
             }
-        }, 500);
-
-        console.log('ModeSwitchingManager: Network mode initialized with unified architecture');
+        }, 100); // 10x per second for smoother decay
     }
 
     // Complete the mode transition
@@ -2300,7 +2874,7 @@ class ModeSwitchingManager {
 
     // Clear any mode-specific timers or intervals
     clearModeTimers() {
-        // Clear any network mode intervals
+        // Clear any network mode intervals (new system)
         if (this.visualizer.brightnessInterval) {
             clearInterval(this.visualizer.brightnessInterval);
             this.visualizer.brightnessInterval = null;
@@ -2815,6 +3389,8 @@ class MQTTVisualizer {
     createVisualization(messageData) {
         if (this.visualizationMode === 'network') {
             this.updateNetworkGraph(messageData);
+        } else if (this.visualizationMode === 'clusters') {
+            this.updateClusters(messageData);
         } else if (this.visualizationMode === 'bubbles') {
             this.updateD3Bubbles(messageData);
         } else if (this.visualizationMode === 'radial') {
@@ -3172,10 +3748,33 @@ class MQTTVisualizer {
         console.log(`NetworkAnimation: Processed message for ${customer}`);
     }
 
+    // Clusters Implementation - Process messages through ClustersAnimation
+    updateClusters(messageData) {
+        console.log('updateClusters called with:', messageData);
+
+        // Ensure clusters animation is initialized
+        if (!this.clustersAnimation) {
+            console.warn('ClustersAnimation not initialized for clusters mode');
+            return;
+        }
+
+        const customer = this.extractCustomerFromTopic(messageData.topic);
+        const customerColor = this.getCustomerColor(customer);
+        const topicColor = this.getTopicColor(messageData.topic);
+
+        console.log(`Processing cluster message for customer: ${customer}, color: ${customerColor}`);
+
+        // Process message through ClustersAnimation - use customer color for all devices in cluster
+        const node = this.clustersAnimation.processMessage(messageData, customerColor, customerColor);
+
+        console.log(`ClustersAnimation: Processed message for ${customer}, node:`, node);
+    }
+
     // Initialize network mode (wrapper for D3 network initialization)
     initializeNetworkMode() {
         console.log('MQTTVisualizer: Initializing network mode');
         this.initializeD3Network();
+        console.log('MQTTVisualizer: Network mode initialization complete');
     }
 
     initializeD3Network() {
@@ -3436,7 +4035,7 @@ class MQTTVisualizer {
     updateNodeBrightness() {
         const now = Date.now();
         const decayRate = 0.005; // Decreases by 0.5% per update (5% per second at 10Hz)
-        const minBrightness = 0.2; // Minimum 20% brightness
+        const minBrightness = 0.3; // Minimum 30% brightness
         const minSizeScale = 0.5; // Minimum 50% size
         
         let updated = false;
@@ -3452,7 +4051,7 @@ class MQTTVisualizer {
             if (timeSinceActivity > 10) {
                 const newBrightness = Math.max(minBrightness, 1.0 - ((timeSinceActivity - 10) * decayRate));
                 const newSizeScale = Math.max(minSizeScale, 1.0 - ((timeSinceActivity - 10) * decayRate));
-                
+
                 // Use smaller threshold for smoother interpolation
                 if (Math.abs(node.brightness - newBrightness) > 0.005) {
                     node.brightness = newBrightness;
