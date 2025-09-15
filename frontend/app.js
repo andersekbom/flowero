@@ -469,11 +469,11 @@ class LinearAnimation {
         // Set initial position
         svgGroup.attr('transform', `translate(${startPos.x}, ${startPos.y})`);
         
-        // Animate to end position
+        // Animate to end position with strong acceleration (dramatic gravity effect)
         svgGroup
             .transition()
             .duration(this.options.duration)
-            .ease(d3.easeLinear) // Constant velocity
+            .ease(d3.easeCubicIn) // Cubic acceleration (starts slow, accelerates dramatically)
             .attr('transform', `translate(${endPos.x}, ${endPos.y})`)
             .on('end', () => {
                 if (onComplete) onComplete();
@@ -490,8 +490,8 @@ class LinearAnimation {
         // Set initial position
         element.style.left = `${startPos.x}px`;
         element.style.top = `${startPos.y}px`;
-        element.style.transition = `left ${this.options.duration}ms linear, top ${this.options.duration}ms linear`;
-        
+        element.style.transition = `left ${this.options.duration}ms cubic-bezier(0.55, 0.055, 0.675, 0.19), top ${this.options.duration}ms cubic-bezier(0.55, 0.055, 0.675, 0.19)`;
+
         // Trigger animation
         requestAnimationFrame(() => {
             element.style.left = `${endPos.x}px`;
@@ -517,7 +517,7 @@ class RadialAnimation {
             duration: 8000,
             fadeStartPoint: 0.2, // Start fading at 20% of journey
             elementSize: { width: 50, height: 50 },
-            buffer: 100,
+            buffer: 300, // Increased buffer to ensure cleanup at screen edges
             ...options
         };
         
@@ -1330,6 +1330,15 @@ class NetworkAnimation {
         this.nodes.push(customerNode);
         this.customerNodes.set(customer, customerNode);
 
+        // Track element with unified tracker
+        if (this.elementTracker) {
+            this.elementTracker.trackElement(customerNode, {
+                type: 'network-customer',
+                status: 'active',
+                createdAt: Date.now()
+            });
+        }
+
         // Create link from broker to customer
         this.links.push({
             source: 'broker',
@@ -1384,6 +1393,15 @@ class NetworkAnimation {
         this.nodes.push(topicNode);
         this.topicNodes.set(topicId, topicNode);
 
+        // Track element with unified tracker
+        if (this.elementTracker) {
+            this.elementTracker.trackElement(topicNode, {
+                type: 'network-topic',
+                status: 'active',
+                createdAt: Date.now()
+            });
+        }
+
         // Create link from customer to topic
         this.links.push({
             source: customer,
@@ -1401,7 +1419,7 @@ class NetworkAnimation {
     }
 
     // Process new message
-    processMessage(messageData, customerColor) {
+    processMessage(messageData, customerColor, topicColor) {
         const customer = messageData.topic.split('/')[0] || 'unknown';
 
         // Add/update customer node
@@ -1412,8 +1430,8 @@ class NetworkAnimation {
         customerNode.brightness = 1.0;
         customerNode.sizeScale = 1.0;
 
-        // Add/update topic node
-        const topicNode = this.addTopicNode(customer, messageData.topic, customerColor);
+        // Add/update topic node using topic-specific color
+        const topicNode = this.addTopicNode(customer, messageData.topic, topicColor || customerColor);
 
         // Update simulation
         this.updateSimulation();
@@ -2129,6 +2147,9 @@ class ModeSwitchingManager {
 
         // Reset animation counters
         this.visualizer.activeRadialAnimations = 0;
+
+        // Clear color legend and visualization state
+        this.visualizer.resetVisualizationState();
 
         // Stop NetworkAnimation if it exists
         if (this.visualizer.networkAnimation) {
@@ -2972,12 +2993,20 @@ class MQTTVisualizer {
                 bubble.style.top = `${currentY}px`;
                 bubble.style.opacity = opacity;
                 bubble.style.transform = `scale(${scale})`;
-                
-                if (progress < 1 && opacity > 0 && bubble.parentNode) {
+
+                // Check if bubble is off screen with buffer
+                const flowWidth = this.domElements.messageFlow.clientWidth;
+                const flowHeight = this.domElements.messageFlow.clientHeight;
+                const buffer = 300; // Large buffer to ensure complete removal
+                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer ||
+                                   currentY < -buffer || currentY > flowHeight + buffer);
+
+                if (progress < 1 && opacity > 0 && !isOffScreen && bubble.parentNode) {
                     requestAnimationFrame(animate);
                 } else if (bubble.parentNode) {
-                    // Remove card when animation completes or becomes fully transparent
+                    // Remove card when animation completes, becomes fully transparent, or goes off screen
                     bubble.parentNode.removeChild(bubble);
+                    this.returnBubbleToPool(bubble);
                     this.activeRadialAnimations--;
                 }
             };
@@ -3124,9 +3153,10 @@ class MQTTVisualizer {
 
         const customer = this.extractCustomerFromTopic(messageData.topic);
         const customerColor = this.getCustomerColor(customer);
+        const topicColor = this.getTopicColor(messageData.topic);
 
         // Process message through NetworkAnimation
-        const { customerNode, topicNode } = this.networkAnimation.processMessage(messageData, customerColor);
+        const { customerNode, topicNode } = this.networkAnimation.processMessage(messageData, customerColor, topicColor);
 
         // Create pulse animation from broker to customer to topic
         if (customerNode && topicNode) {
@@ -5376,11 +5406,11 @@ class MQTTVisualizer {
             elementSize: { width: 50, height: 50 }
         });
         
-        // Start radial burst animation
+        // Start radial burst animation using actual window dimensions for proper off-screen detection
         radialAnimation.animateSVGElement(
-            circle, 
-            dimensions.width, 
-            dimensions.height,
+            circle,
+            window.innerWidth,
+            window.innerHeight,
             () => {
                 // Animation complete - untrack and decrement counter
                 this.cleanupManager.untrackElement(circle);
