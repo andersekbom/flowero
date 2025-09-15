@@ -13,8 +13,2334 @@
  * @class MQTTVisualizer
  */
 
+/**
+ * Reusable Circle Renderer for consistent styling across all visualization modes
+ */
+/**
+ * Unified Container System - Single SVG container for all visualization modes
+ */
+class UnifiedContainer {
+    constructor(parentElement) {
+        this.parentElement = parentElement;
+        this.svg = null;
+        this.containerGroup = null;
+        this.width = 0;
+        this.height = 0;
+    }
+    
+    initialize(layoutCalculator = null) {
+        // Remove any existing visualization containers
+        this.cleanup();
+        
+        // Calculate container dimensions (excludes sidebar)
+        this.updateDimensions(layoutCalculator);
+        
+        // Create single SVG container positioned relative to parent
+        this.svg = d3.select(this.parentElement)
+            .append('svg')
+            .attr('id', 'unified-visualization')
+            .attr('width', this.width)
+            .attr('height', this.height)
+            .style('position', 'absolute')
+            .style('top', '0px')
+            .style('left', '0px')
+            .style('overflow', 'visible')
+            .style('pointer-events', 'none') // Allow interactions to pass through
+            .style('z-index', '1'); // Ensure it doesn't interfere with sidebar
+        
+        // Create main container group for all elements
+        this.containerGroup = this.svg.append('g')
+            .attr('class', 'visualization-container');
+        
+        // Add defs for filters (reuse existing glow effects)
+        this.addFilters();
+        
+        return this;
+    }
+    
+    updateDimensions(layoutCalculator = null) {
+        if (layoutCalculator) {
+            // Use layout calculator for width/height but actual window center for positioning
+            const dimensions = layoutCalculator.getEffectiveDimensions();
+            this.width = dimensions.width;
+            this.height = dimensions.height;
+            // Use actual window center instead of layout calculator center
+            this.centerX = window.innerWidth / 2;
+            this.centerY = window.innerHeight / 2;
+        } else {
+            // Fallback to parent element dimensions
+            this.width = this.parentElement.clientWidth;
+            this.height = this.parentElement.clientHeight;
+            this.centerX = this.width / 2;
+            this.centerY = this.height / 2;
+        }
+
+        if (this.svg) {
+            // Update SVG dimensions
+            this.svg
+                .attr('width', this.width)
+                .attr('height', this.height);
+        }
+    }
+    
+    addFilters() {
+        const defs = this.svg.append('defs');
+        
+        // Add glow filter (reuse from existing network graph)
+        const glowFilter = defs.append('filter')
+            .attr('id', 'unified-glow')
+            .attr('width', '200%')
+            .attr('height', '200%')
+            .attr('x', '-50%')
+            .attr('y', '-50%');
+        
+        glowFilter.append('feGaussianBlur')
+            .attr('stdDeviation', '3')
+            .attr('result', 'coloredBlur');
+        
+        const feMerge = glowFilter.append('feMerge');
+        feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+        feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+        
+        // Add text shadow filter
+        const textShadowFilter = defs.append('filter')
+            .attr('id', 'unified-text-shadow')
+            .attr('width', '200%')
+            .attr('height', '200%');
+        
+        textShadowFilter.append('feDropShadow')
+            .attr('dx', '0')
+            .attr('dy', '1')
+            .attr('stdDeviation', '2')
+            .attr('flood-color', 'rgba(0,0,0,0.8)');
+    }
+    
+    getContainer() {
+        return this.containerGroup;
+    }
+    
+    getDimensions() {
+        return {
+            width: this.width,
+            height: this.height,
+            centerX: this.centerX,
+            centerY: this.centerY
+        };
+    }
+    
+    cleanup() {
+        // Remove all existing visualization containers
+        const existingContainers = [
+            '#d3-bubbles',
+            '#d3-network', 
+            '#d3-radial-svg',
+            '#unified-visualization'
+        ];
+        
+        existingContainers.forEach(id => {
+            const element = this.parentElement.querySelector(id);
+            if (element) {
+                element.remove();
+            }
+        });
+        
+        // Clear DOM message bubbles
+        const bubbles = this.parentElement.querySelectorAll('.message-bubble, .radial-message-bubble');
+        bubbles.forEach(bubble => bubble.remove());
+    }
+}
+
+class MessageProcessor {
+    constructor(visualizer) {
+        this.visualizer = visualizer;
+    }
+    
+    // Process raw MQTT message into standardized format
+    processMessage(messageData) {
+        // Extract topic components
+        const topicParts = messageData.topic.split('/');
+        const customer = topicParts[0] || messageData.topic;
+        const deviceId = topicParts.length > 1 ? topicParts[1] : 'N/A';
+        
+        // Get color
+        const color = this.visualizer.getTopicColor(messageData.topic);
+        
+        // Create standardized message object
+        return {
+            // Core identification
+            customer: customer,
+            deviceId: deviceId,
+            topic: messageData.topic,
+            
+            // Visual properties
+            color: color,
+            
+            // Message content
+            timestamp: messageData.timestamp,
+            payload: messageData.payload,
+            qos: messageData.qos || 0,
+            retain: messageData.retain || false,
+            
+            // Processing metadata
+            id: `${customer}-${deviceId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            processedAt: Date.now()
+        };
+    }
+    
+    // Extract just the device ID for labeling
+    getDeviceLabel(processedMessage) {
+        return processedMessage.deviceId;
+    }
+    
+    // Get customer name for grouping
+    getCustomerName(processedMessage) {
+        return processedMessage.customer;
+    }
+    
+    // Create formatted time string
+    formatTimestamp(processedMessage) {
+        return new Date(processedMessage.timestamp * 1000).toLocaleString();
+    }
+}
+
+// Unified Element System with pluggable styles
+class StyleProvider {
+    // Base interface for future style variations
+    static getStyle(type = 'circle') {
+        switch (type) {
+            case 'circle':
+                return CircleStyle;
+            // Future styles can be added here: 'card', 'hexagon', etc.
+            default:
+                return CircleStyle;
+        }
+    }
+}
+
+class CircleStyle {
+    static createElement(processedMessage, options = {}) {
+        return CircleRenderer.createCircleElement(
+            processedMessage.color, 
+            processedMessage.deviceId, 
+            options
+        );
+    }
+    
+    static createSVGElement(container, processedMessage, x, y, options = {}) {
+        return CircleRenderer.createSVGCircle(
+            container, 
+            processedMessage.color, 
+            processedMessage.deviceId, 
+            x, y, 
+            options
+        );
+    }
+    
+    static getDefaultOptions() {
+        return {
+            size: 50,
+            showLabel: true,
+            className: 'circle-element'
+        };
+    }
+}
+
+class UnifiedElementSystem {
+    constructor(styleType = 'circle') {
+        this.styleProvider = StyleProvider.getStyle(styleType);
+    }
+    
+    // Create DOM element using current style
+    createElement(processedMessage, options = {}) {
+        const defaultOptions = this.styleProvider.getDefaultOptions();
+        const finalOptions = { ...defaultOptions, ...options };
+        return this.styleProvider.createElement(processedMessage, finalOptions);
+    }
+    
+    // Create SVG element using current style  
+    createSVGElement(container, processedMessage, x, y, options = {}) {
+        const defaultOptions = this.styleProvider.getDefaultOptions();
+        const finalOptions = { ...defaultOptions, ...options };
+        return this.styleProvider.createSVGElement(container, processedMessage, x, y, finalOptions);
+    }
+    
+    // Switch to different style (future expansion)
+    setStyle(styleType) {
+        this.styleProvider = StyleProvider.getStyle(styleType);
+    }
+}
+
+class CircleRenderer {
+    static createCircleElement(color, deviceId, options = {}) {
+        const {
+            size = 50,
+            showLabel = true,
+            className = 'circle-element'
+        } = options;
+        
+        // Create main container
+        const element = document.createElement('div');
+        element.className = className;
+        
+        // Create structure: circle + optional label below
+        element.innerHTML = `
+            <div class="circle"></div>
+            ${showLabel ? `<div class="circle-label"><div class="device-id">${deviceId}</div></div>` : ''}
+        `;
+        
+        // Style the main container
+        Object.assign(element.style, {
+            position: 'absolute',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+            transition: 'none',
+            // Override any inherited styles
+            padding: '0',
+            borderRadius: '0',
+            boxShadow: 'none',
+            border: 'none',
+            background: 'transparent',
+            maxWidth: 'none',
+            minWidth: 'none'
+        });
+        
+        // Style the circle with consistent appearance
+        const circle = element.querySelector('.circle');
+        Object.assign(circle.style, {
+            background: color,
+            border: '2px solid #fff',
+            borderRadius: '50%',
+            width: `${size}px`,
+            height: `${size}px`,
+            boxShadow: 'none',
+            outline: 'none',
+            filter: 'none'
+        });
+        
+        // Style the label if present
+        if (showLabel) {
+            const label = element.querySelector('.circle-label');
+            Object.assign(label.style, {
+                marginTop: '15px', // Use network mode spacing (radius + 15px)
+                textAlign: 'center',
+                fontSize: '12px', // Use network mode font size
+                fontWeight: 'bold', // Use network mode font weight
+                fontFamily: 'Arial, sans-serif',
+                color: 'white',
+                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                lineHeight: '1.2'
+            });
+        }
+        
+        return element;
+    }
+    
+    static createSVGCircle(container, color, deviceId, x, y, options = {}) {
+        const {
+            size = 50,
+            showLabel = true,
+            networkMode = false
+        } = options;
+        
+        // Create SVG group
+        const group = container.append('g')
+            .attr('class', 'svg-circle-group')
+            .attr('transform', `translate(${x}, ${y})`);
+        
+        // Create circle
+        group.append('circle')
+            .attr('r', size / 2)
+            .attr('cx', 0)
+            .attr('cy', 0)
+            .attr('fill', color)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .attr('filter', 'none');
+        
+        // Add label if requested
+        if (showLabel) {
+            // Use network mode styling as the default (consistent across all modes)
+            const fontSize = '12px';
+            const fontWeight = 'bold';
+            const labelOffset = 15; // radius + offset
+
+            group.append('text')
+                .attr('text-anchor', 'middle')
+                .attr('x', 0)
+                .attr('y', (size / 2) + labelOffset)
+                .attr('fill', 'white')
+                .attr('font-size', fontSize)
+                .attr('font-weight', fontWeight)
+                .attr('font-family', 'Arial, sans-serif')
+                .attr('filter', 'url(#textShadow)')
+                .text(deviceId);
+        }
+        
+        return group;
+    }
+}
+
+// Phase 2: Animation Engine - Reusable Movement Patterns
+class LinearAnimation {
+    constructor(container, direction, layoutCalculator = null, options = {}) {
+        this.container = container;
+        this.direction = direction; // { x: 0, y: 1 } for down, { x: -1, y: 0 } for left, etc.
+        this.layoutCalculator = layoutCalculator;
+        
+        // Default options
+        this.options = {
+            duration: 15000,
+            margin: 100,
+            elementSize: { width: 50, height: 50 }, // For positioning calculations
+            ...options
+        };
+    }
+    
+    // Calculate start position based on direction
+    getStartPosition(containerWidth, containerHeight) {
+        const { margin, elementSize } = this.options;
+        const { x: dirX, y: dirY } = this.direction;
+        
+        let startX, startY;
+        
+        if (dirY === -1) {
+            // Moving up: start from bottom
+            startX = margin + Math.random() * (containerWidth - elementSize.width - 2 * margin);
+            startY = containerHeight + 100;
+        } else if (dirY === 1) {
+            // Moving down: start from top
+            startX = margin + Math.random() * (containerWidth - elementSize.width - 2 * margin);
+            startY = -100;
+        } else if (dirX === -1) {
+            // Moving left: start from right
+            startX = containerWidth + 100;
+            startY = margin + Math.random() * (containerHeight - 2 * margin);
+        } else if (dirX === 1) {
+            // Moving right: start from left
+            startX = -elementSize.width - 100;
+            startY = margin + Math.random() * (containerHeight - 2 * margin);
+        }
+        
+        return { x: startX, y: startY };
+    }
+    
+    // Calculate end position based on direction and travel distance
+    getEndPosition(startX, startY, containerWidth, containerHeight) {
+        const { elementSize } = this.options;
+        const { x: dirX, y: dirY } = this.direction;
+        const buffer = 200;
+        
+        let targetX, targetY;
+        
+        if (dirX !== 0) {
+            // Horizontal movement: travel across full width plus buffer
+            const travelDistance = containerWidth + buffer * 2;
+            targetX = startX + (dirX * travelDistance);
+            targetY = startY; // No vertical movement
+        } else {
+            // Vertical movement: travel across full height plus buffer
+            const travelDistance = containerHeight + buffer * 2;
+            targetX = startX; // No horizontal movement
+            targetY = startY + (dirY * travelDistance);
+        }
+        
+        return { x: targetX, y: targetY };
+    }
+    
+    // Animate SVG element using D3 transition
+    animateSVGElement(svgGroup, containerWidth, containerHeight, onComplete = null) {
+        // Use layout calculator dimensions if available
+        let effectiveWidth = containerWidth;
+        let effectiveHeight = containerHeight;
+        
+        if (this.layoutCalculator) {
+            const layoutDimensions = this.layoutCalculator.getEffectiveDimensions();
+            effectiveWidth = layoutDimensions.width;
+            effectiveHeight = layoutDimensions.height;
+        }
+        
+        const startPos = this.getStartPosition(effectiveWidth, effectiveHeight);
+        const endPos = this.getEndPosition(startPos.x, startPos.y, effectiveWidth, effectiveHeight);
+        
+        // Set initial position
+        svgGroup.attr('transform', `translate(${startPos.x}, ${startPos.y})`);
+        
+        // Animate to end position
+        svgGroup
+            .transition()
+            .duration(this.options.duration)
+            .ease(d3.easeLinear) // Constant velocity
+            .attr('transform', `translate(${endPos.x}, ${endPos.y})`)
+            .on('end', () => {
+                if (onComplete) onComplete();
+            });
+        
+        return { startPos, endPos };
+    }
+    
+    // Animate DOM element using CSS transforms
+    animateDOMElement(element, containerWidth, containerHeight, onComplete = null) {
+        const startPos = this.getStartPosition(containerWidth, containerHeight);
+        const endPos = this.getEndPosition(startPos.x, startPos.y, containerWidth, containerHeight);
+        
+        // Set initial position
+        element.style.left = `${startPos.x}px`;
+        element.style.top = `${startPos.y}px`;
+        element.style.transition = `left ${this.options.duration}ms linear, top ${this.options.duration}ms linear`;
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            element.style.left = `${endPos.x}px`;
+            element.style.top = `${endPos.y}px`;
+        });
+        
+        // Handle completion
+        if (onComplete) {
+            setTimeout(onComplete, this.options.duration);
+        }
+        
+        return { startPos, endPos };
+    }
+}
+
+class RadialAnimation {
+    constructor(centerX, centerY, options = {}) {
+        this.centerX = centerX;
+        this.centerY = centerY;
+        
+        // Default options
+        this.options = {
+            duration: 8000,
+            fadeStartPoint: 0.2, // Start fading at 20% of journey
+            elementSize: { width: 50, height: 50 },
+            buffer: 100,
+            ...options
+        };
+        
+        // Generate random direction for this animation
+        this.angle = Math.random() * 2 * Math.PI;
+        this.directionX = Math.cos(this.angle);
+        this.directionY = Math.sin(this.angle);
+    }
+    
+    // Calculate max distance based on container dimensions
+    calculateMaxDistance(containerWidth, containerHeight) {
+        // Distance from center to corner of screen (furthest any element needs to travel)
+        const maxScreenDistance = Math.sqrt(
+            (containerWidth / 2) * (containerWidth / 2) + 
+            (containerHeight / 2) * (containerHeight / 2)
+        );
+        
+        // Add buffer to ensure elements move completely off screen
+        const elementMaxSize = this.options.elementSize.width + this.options.buffer;
+        const buffer = elementMaxSize / 2;
+        
+        return maxScreenDistance + buffer;
+    }
+    
+    // Calculate current position and opacity based on elapsed time
+    calculateState(elapsed, containerWidth, containerHeight) {
+        const maxDistance = this.calculateMaxDistance(containerWidth, containerHeight);
+        const timeRatio = Math.min(elapsed / this.options.duration, 1);
+        const currentDistance = timeRatio * maxDistance;
+        
+        // Position based on distance and direction
+        const currentX = this.centerX + (this.directionX * currentDistance);
+        const currentY = this.centerY + (this.directionY * currentDistance);
+        
+        // Calculate opacity with fade after fadeStartPoint
+        let opacity = 1.0;
+        if (timeRatio > this.options.fadeStartPoint) {
+            const fadeRatio = (timeRatio - this.options.fadeStartPoint) / (1 - this.options.fadeStartPoint);
+            opacity = Math.max(0, 1 - fadeRatio);
+        }
+        
+        return {
+            x: currentX,
+            y: currentY,
+            opacity: opacity,
+            progress: timeRatio,
+            distance: currentDistance,
+            isComplete: timeRatio >= 1
+        };
+    }
+    
+    // Check if element is off screen
+    isOffScreen(x, y, containerWidth, containerHeight) {
+        const buffer = this.options.buffer;
+        return (x < -buffer || x > containerWidth + buffer || 
+                y < -buffer || y > containerHeight + buffer);
+    }
+    
+    // Animate SVG element using requestAnimationFrame
+    animateSVGElement(svgGroup, containerWidth, containerHeight, onComplete = null) {
+        const startTime = Date.now();
+        
+        // Set initial position at center
+        svgGroup.attr('transform', `translate(${this.centerX}, ${this.centerY})`);
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const state = this.calculateState(elapsed, containerWidth, containerHeight);
+            
+            // Update position and opacity
+            svgGroup
+                .attr('transform', `translate(${state.x}, ${state.y})`)
+                .style('opacity', state.opacity);
+            
+            // Check if animation should continue
+            const shouldStop = state.isComplete || 
+                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight) ||
+                              !svgGroup.node() || !svgGroup.node().parentNode;
+            
+            if (!shouldStop) {
+                requestAnimationFrame(animate);
+            } else {
+                // Animation complete
+                if (onComplete) onComplete();
+            }
+        };
+        
+        animate();
+        
+        return {
+            angle: this.angle,
+            direction: { x: this.directionX, y: this.directionY }
+        };
+    }
+    
+    // Animate DOM element using requestAnimationFrame
+    animateDOMElement(element, containerWidth, containerHeight, onComplete = null) {
+        const startTime = Date.now();
+        const { width, height } = this.options.elementSize;
+        
+        // Set initial position at center (adjusted for element size)
+        element.style.left = `${this.centerX - width / 2}px`;
+        element.style.top = `${this.centerY - height / 2}px`;
+        element.style.opacity = '1';
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const state = this.calculateState(elapsed, containerWidth, containerHeight);
+            
+            // Update position and opacity (adjust for element center)
+            element.style.left = `${state.x - width / 2}px`;
+            element.style.top = `${state.y - height / 2}px`;
+            element.style.opacity = state.opacity;
+            
+            // Check if animation should continue
+            const shouldStop = state.isComplete || 
+                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight) ||
+                              !element.parentNode;
+            
+            if (!shouldStop) {
+                requestAnimationFrame(animate);
+            } else {
+                // Animation complete
+                if (onComplete) onComplete();
+            }
+        };
+        
+        animate();
+        
+        return {
+            angle: this.angle,
+            direction: { x: this.directionX, y: this.directionY }
+        };
+    }
+}
+
+class StarfieldAnimation {
+    constructor(centerX, centerY, options = {}) {
+        this.centerX = centerX;
+        this.centerY = centerY;
+        
+        // Default options
+        this.options = {
+            duration: 15000,
+            intensity: 8, // Higher = more dramatic acceleration
+            minScale: 0.3,
+            maxScale: 10.0,
+            fadeInThreshold: 0.02, // 2% of journey for quick fade in
+            elementSize: { width: 50, height: 50 },
+            buffer: 100,
+            ...options
+        };
+        
+        // Generate random direction for this animation
+        this.angle = Math.random() * 2 * Math.PI;
+        this.directionX = Math.cos(this.angle);
+        this.directionY = Math.sin(this.angle);
+    }
+    
+    // Calculate max distance based on container dimensions
+    calculateMaxDistance(containerWidth, containerHeight) {
+        // Distance from center to corner of screen (furthest any element needs to travel)
+        const maxScreenDistance = Math.sqrt(
+            (containerWidth / 2) * (containerWidth / 2) + 
+            (containerHeight / 2) * (containerHeight / 2)
+        );
+        
+        // Add buffer for element size and scaling
+        const elementMaxSize = this.options.elementSize.width * this.options.maxScale + this.options.buffer;
+        const buffer = elementMaxSize / 2;
+        
+        return maxScreenDistance + buffer;
+    }
+    
+    // Calculate current state with quadratic acceleration and scaling
+    calculateState(elapsed, containerWidth, containerHeight) {
+        const maxDistance = this.calculateMaxDistance(containerWidth, containerHeight);
+        const timeRatio = Math.min(elapsed / this.options.duration, 1);
+        
+        // Quadratic acceleration for starfield effect
+        const currentDistance = (Math.pow(timeRatio, this.options.intensity)) * maxDistance;
+        
+        // Position based on distance and direction
+        const currentX = this.centerX + (this.directionX * currentDistance);
+        const currentY = this.centerY + (this.directionY * currentDistance);
+        
+        // Calculate scale based on distance (further = bigger)
+        const distanceRatio = Math.min(currentDistance / maxDistance, 1);
+        const scale = this.options.minScale + (distanceRatio * distanceRatio * (this.options.maxScale - this.options.minScale));
+        
+        // Calculate opacity: fade in quickly during first part of animation
+        let opacity;
+        if (distanceRatio < this.options.fadeInThreshold) {
+            opacity = distanceRatio * (1 / this.options.fadeInThreshold); // Quick fade in
+        } else {
+            opacity = 1.0; // Full opacity after fade in
+        }
+        
+        return {
+            x: currentX,
+            y: currentY,
+            scale: scale,
+            opacity: opacity,
+            progress: timeRatio,
+            distance: currentDistance,
+            distanceRatio: distanceRatio,
+            isComplete: timeRatio >= 1
+        };
+    }
+    
+    // Check if element is off screen
+    isOffScreen(x, y, containerWidth, containerHeight, scale = 1) {
+        const buffer = this.options.buffer * scale; // Scale buffer with element
+        return (x < -buffer || x > containerWidth + buffer || 
+                y < -buffer || y > containerHeight + buffer);
+    }
+    
+    // Animate SVG element with quadratic acceleration and scaling
+    animateSVGElement(svgGroup, containerWidth, containerHeight, onComplete = null) {
+        const startTime = Date.now();
+        
+        // Set initial position at center with minimum scale and low opacity
+        svgGroup
+            .attr('transform', `translate(${this.centerX}, ${this.centerY}) scale(${this.options.minScale})`)
+            .style('opacity', 0.1);
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const state = this.calculateState(elapsed, containerWidth, containerHeight);
+            
+            // Update position, scale, and opacity
+            svgGroup
+                .attr('transform', `translate(${state.x}, ${state.y}) scale(${state.scale})`)
+                .style('opacity', state.opacity);
+            
+            // Check if animation should continue
+            const shouldStop = state.isComplete || 
+                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight, state.scale) ||
+                              !svgGroup.node() || !svgGroup.node().parentNode;
+            
+            if (!shouldStop) {
+                requestAnimationFrame(animate);
+            } else {
+                // Animation complete
+                if (onComplete) onComplete();
+            }
+        };
+        
+        animate();
+        
+        return {
+            angle: this.angle,
+            direction: { x: this.directionX, y: this.directionY }
+        };
+    }
+    
+    // Animate DOM element with quadratic acceleration and scaling
+    animateDOMElement(element, containerWidth, containerHeight, onComplete = null) {
+        const startTime = Date.now();
+        
+        // Set initial position at center with minimum scale and low opacity
+        element.style.left = `${this.centerX - this.options.elementSize.width / 2}px`;
+        element.style.top = `${this.centerY - this.options.elementSize.height / 2}px`;
+        element.style.transform = `scale(${this.options.minScale})`;
+        element.style.opacity = '0.1';
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const state = this.calculateState(elapsed, containerWidth, containerHeight);
+            
+            // Update position, scale, and opacity
+            element.style.left = `${state.x - this.options.elementSize.width / 2}px`;
+            element.style.top = `${state.y - this.options.elementSize.height / 2}px`;
+            element.style.transform = `scale(${state.scale})`;
+            element.style.opacity = state.opacity;
+            
+            // Check if animation should continue
+            const shouldStop = state.isComplete || 
+                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight, state.scale) ||
+                              !element.parentNode;
+            
+            if (!shouldStop) {
+                requestAnimationFrame(animate);
+            } else {
+                // Animation complete
+                if (onComplete) onComplete();
+            }
+        };
+        
+        animate();
+        
+        return {
+            angle: this.angle,
+            direction: { x: this.directionX, y: this.directionY }
+        };
+    }
+}
+
+class ForceAnimation {
+    constructor(container, nodes, links, options = {}) {
+        this.container = container;
+        this.nodes = nodes;
+        this.links = links;
+        
+        // Default options based on existing implementation
+        this.options = {
+            width: 800,
+            height: 600,
+            velocityDecay: 0.75,
+            alphaDecay: 0.01,
+            alphaMin: 0.001,
+            // Force configurations
+            linkDistance: 250,
+            linkStrength: 0.2,
+            chargeStrength: -800,
+            chargeDistanceMax: 400,
+            centerStrength: 0.05,
+            collisionRadius: 25,
+            collisionStrength: 0.3,
+            boundaryPadding: 30,
+            ...options
+        };
+        
+        this.simulation = null;
+        this.onTick = null;
+    }
+    
+    // Create boundary force that keeps nodes within viewport
+    createBoundaryForce(width, height) {
+        return (alpha) => {
+            this.nodes.forEach(node => {
+                // Skip fixed nodes (like broker)
+                if (node.type === 'broker' || node.fx !== undefined) return;
+                
+                const nodeRadius = node.radius || 20;
+                const padding = nodeRadius + this.options.boundaryPadding;
+                
+                // Apply exponential force that gets stronger near boundaries
+                if (node.x < padding) {
+                    const penetration = padding - node.x;
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vx += forceStrength * alpha * 2;
+                }
+                if (node.x > width - padding) {
+                    const penetration = node.x - (width - padding);
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vx -= forceStrength * alpha * 2;
+                }
+                if (node.y < padding) {
+                    const penetration = padding - node.y;
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vy += forceStrength * alpha * 2;
+                }
+                if (node.y > height - padding) {
+                    const penetration = node.y - (height - padding);
+                    const forceStrength = Math.min(0.8, 0.1 + (penetration / padding) * 0.7);
+                    node.vy -= forceStrength * alpha * 2;
+                }
+            });
+        };
+    }
+    
+    // Handle simulation tick with boundary enforcement
+    handleTick() {
+        // Enforce hard boundary constraints before updating visuals
+        this.nodes.forEach(node => {
+            if (node.type === 'broker' || node.fx !== undefined) return; // Skip fixed nodes
+            
+            const nodeRadius = node.radius || 20;
+            const padding = nodeRadius + this.options.boundaryPadding;
+            
+            // Hard boundary enforcement - never allow nodes to go off screen
+            node.x = Math.max(padding, Math.min(this.options.width - padding, node.x));
+            node.y = Math.max(padding, Math.min(this.options.height - padding, node.y));
+        });
+        
+        // Call custom tick handler if provided
+        if (this.onTick) {
+            this.onTick(this.nodes, this.links);
+        }
+    }
+    
+    // Initialize the force simulation
+    initialize(onTick = null) {
+        this.onTick = onTick;
+        
+        // Create D3 force simulation with smoother movement
+        this.simulation = d3.forceSimulation(this.nodes)
+            .velocityDecay(this.options.velocityDecay)
+            .alphaDecay(this.options.alphaDecay)
+            .alphaMin(this.options.alphaMin)
+            .force('link', d3.forceLink(this.links)
+                .id(d => d.id)
+                .distance(d => d.distance || this.options.linkDistance)
+                .strength(this.options.linkStrength))
+            .force('charge', d3.forceManyBody()
+                .strength(this.options.chargeStrength)
+                .distanceMax(this.options.chargeDistanceMax))
+            .force('center', d3.forceCenter(this.options.width / 2, this.options.height / 2)
+                .strength(this.options.centerStrength))
+            .force('collision', d3.forceCollide()
+                .radius(d => (d.radius || 20) + this.options.collisionRadius)
+                .strength(this.options.collisionStrength))
+            .force('boundary', this.createBoundaryForce(this.options.width, this.options.height))
+            .on('tick', () => this.handleTick());
+        
+        return this.simulation;
+    }
+    
+    // Update simulation dimensions
+    updateDimensions(width, height) {
+        this.options.width = width;
+        this.options.height = height;
+        
+        if (this.simulation) {
+            // Update center force
+            this.simulation.force('center', d3.forceCenter(width / 2, height / 2)
+                .strength(this.options.centerStrength));
+            
+            // Update boundary force
+            this.simulation.force('boundary', this.createBoundaryForce(width, height));
+            
+            // Update broker node position if it exists
+            const brokerNode = this.nodes.find(n => n.id === 'broker');
+            if (brokerNode) {
+                brokerNode.fx = width / 2;
+                brokerNode.fy = height / 2;
+            }
+            
+            // Restart simulation with moderate alpha
+            this.simulation.alpha(0.3).restart();
+        }
+    }
+    
+    // Add nodes and links to simulation
+    update(nodes, links) {
+        this.nodes = nodes;
+        this.links = links;
+        
+        if (this.simulation) {
+            this.simulation.nodes(nodes);
+            this.simulation.force('link').links(links);
+            this.simulation.alpha(0.3).restart();
+        }
+    }
+    
+    // Stop the simulation
+    stop() {
+        if (this.simulation) {
+            this.simulation.stop();
+        }
+    }
+    
+    // Restart the simulation
+    restart(alpha = 0.3) {
+        if (this.simulation) {
+            this.simulation.alpha(alpha).restart();
+        }
+    }
+}
+
+// Phase 3: Layout Management - Sidebar-Aware Positioning
+class LayoutCalculator {
+    constructor(containerElement) {
+        this.containerElement = containerElement;
+        this.sidebarCollapsedWidth = 60;
+        this.sidebarExpandedWidth = 300;
+    }
+    
+    // Detect current sidebar state
+    getSidebarState() {
+        const sidebar = document.querySelector('.sidebar');
+        if (!sidebar) {
+            return { isCollapsed: true, width: 0 }; // No sidebar
+        }
+        
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        const width = isCollapsed ? this.sidebarCollapsedWidth : this.sidebarExpandedWidth;
+        
+        return { isCollapsed, width };
+    }
+    
+    // Calculate effective container dimensions excluding sidebar
+    getEffectiveDimensions() {
+        const containerRect = this.containerElement.getBoundingClientRect();
+        const sidebarState = this.getSidebarState();
+        
+        // Available width is container width minus sidebar width
+        const effectiveWidth = containerRect.width - sidebarState.width;
+        const effectiveHeight = containerRect.height;
+        
+        return {
+            width: effectiveWidth,
+            height: effectiveHeight,
+            centerX: effectiveWidth / 2,
+            centerY: effectiveHeight / 2,
+            fullWidth: containerRect.width,
+            fullHeight: containerRect.height,
+            sidebarWidth: sidebarState.width,
+            sidebarCollapsed: sidebarState.isCollapsed
+        };
+    }
+    
+    // Get positioning offset for elements (sidebar compensation)
+    getPositionOffset() {
+        const sidebarState = this.getSidebarState();
+        
+        return {
+            x: sidebarState.width, // Offset elements by sidebar width
+            y: 0 // No vertical offset needed
+        };
+    }
+    
+    // Convert container-relative coordinates to viewport coordinates
+    containerToViewport(x, y) {
+        const offset = this.getPositionOffset();
+        return {
+            x: x + offset.x,
+            y: y + offset.y
+        };
+    }
+    
+    // Convert viewport coordinates to container-relative coordinates  
+    viewportToContainer(x, y) {
+        const offset = this.getPositionOffset();
+        return {
+            x: x - offset.x,
+            y: y - offset.y
+        };
+    }
+    
+    // Get safe bounds for element positioning (with margins)
+    getSafeBounds(margin = 50) {
+        const dimensions = this.getEffectiveDimensions();
+        
+        return {
+            minX: margin,
+            maxX: dimensions.width - margin,
+            minY: margin,
+            maxY: dimensions.height - margin,
+            centerX: dimensions.centerX,
+            centerY: dimensions.centerY
+        };
+    }
+    
+    // Check if coordinates are within effective container bounds
+    isWithinBounds(x, y, buffer = 0) {
+        const dimensions = this.getEffectiveDimensions();
+        
+        return (
+            x >= -buffer && 
+            x <= dimensions.width + buffer &&
+            y >= -buffer && 
+            y <= dimensions.height + buffer
+        );
+    }
+}
+
+/**
+ * NetworkAnimation - Unified force-directed graph animation for network mode
+ */
+class NetworkAnimation {
+    constructor(containerGroup, layoutCalculator, elementSystem, options = {}) {
+        this.containerGroup = containerGroup;
+        this.layoutCalculator = layoutCalculator;
+        this.elementSystem = elementSystem;
+
+        // Default options
+        this.options = {
+            velocityDecay: 0.75,
+            alphaDecay: 0.01,
+            alphaMin: 0.001,
+            linkDistance: 250,
+            linkStrength: 0.2,
+            chargeStrength: -800,
+            chargeDistanceMax: 400,
+            centerStrength: 0.05,
+            collisionRadius: 25,
+            collisionStrength: 1.0,
+            boundaryPadding: 30,
+            ...options
+        };
+
+        // Network state
+        this.nodes = [];
+        this.links = [];
+        this.simulation = null;
+        this.nodeGroups = null;
+        this.linkGroups = null;
+
+        // Node tracking
+        this.brokerNode = null;
+        this.customerNodes = new Map();
+        this.topicNodes = new Map();
+    }
+
+    // Initialize the network simulation
+    initialize() {
+        console.log('NetworkAnimation: Initializing force simulation');
+
+        // Create broker node at center
+        this.createBrokerNode();
+
+        // Create D3 force simulation
+        this.simulation = d3.forceSimulation(this.nodes)
+            .velocityDecay(this.options.velocityDecay)
+            .alphaDecay(this.options.alphaDecay)
+            .alphaMin(this.options.alphaMin)
+            .force('link', d3.forceLink(this.links)
+                .id(d => d.id)
+                .distance(d => {
+                    // Shorter distance for customer-topic links to keep them together
+                    if (d.type === 'customer-topic') return 80;
+                    // Normal distance for broker-customer links
+                    return this.options.linkDistance;
+                })
+                .strength(d => {
+                    // Stronger force for customer-topic links to keep them together
+                    if (d.type === 'customer-topic') return 0.8;
+                    // Normal strength for broker-customer links
+                    return this.options.linkStrength;
+                })
+            )
+            .force('charge', d3.forceManyBody()
+                .strength(this.options.chargeStrength)
+                .distanceMax(this.options.chargeDistanceMax)
+            )
+            .force('center', d3.forceCenter()
+                .strength(this.options.centerStrength)
+            )
+            .force('collision', d3.forceCollide()
+                .radius(d => {
+                    // Use actual node radius + padding for collision detection
+                    const baseRadius = d.radius || this.options.collisionRadius;
+                    // Add much larger padding around broker node to prevent overlap
+                    const padding = d.type === 'broker' ? 40 : 8;
+                    return baseRadius + padding;
+                })
+                .strength(this.options.collisionStrength)
+            )
+            .force('brokerRepel', (alpha) => {
+                // Custom force to strongly repel nodes from broker
+                if (!this.brokerNode) return;
+
+                this.nodes.forEach(node => {
+                    if (node.type === 'broker') return;
+
+                    // Skip if node positions are not yet defined
+                    if (typeof node.x !== 'number' || typeof node.y !== 'number') return;
+                    if (typeof this.brokerNode.x !== 'number' || typeof this.brokerNode.y !== 'number') return;
+
+                    const dx = node.x - this.brokerNode.x;
+                    const dy = node.y - this.brokerNode.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    // Different minimum distances for different node types
+                    const minDistance = node.type === 'customer' ? 300 : 120;
+
+                    // Skip if distance calculation failed
+                    if (!isFinite(distance) || distance === 0) return;
+
+                    if (distance < minDistance) {
+                        const force = (minDistance - distance) / distance * alpha * 0.5;
+                        node.vx += dx * force;
+                        node.vy += dy * force;
+                    }
+                });
+            })
+            .on('tick', () => this.onTick());
+
+        // Apply boundary force and set center position
+        this.updateDimensions();
+
+        // Create SVG groups for links and nodes
+        this.linkGroups = this.containerGroup.append('g').attr('class', 'links');
+        this.nodeGroups = this.containerGroup.append('g').attr('class', 'nodes');
+
+        console.log('NetworkAnimation: Force simulation initialized');
+    }
+
+    // Update dimensions and boundary forces
+    updateDimensions() {
+        if (!this.simulation) return;
+
+        // Use actual current window center (responsive to sidebar changes)
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        const dimensions = {
+            centerX: windowWidth / 2,
+            centerY: windowHeight / 2,
+            width: windowWidth,
+            height: windowHeight
+        };
+
+        console.log('NetworkAnimation: Updated center dimensions:', dimensions);
+
+        // Update center force
+        this.simulation.force('center', d3.forceCenter(
+            dimensions.centerX,
+            dimensions.centerY
+        ).strength(this.options.centerStrength));
+
+        // Update boundary force
+        this.simulation.force('boundary', this.createBoundaryForce(
+            dimensions.width,
+            dimensions.height
+        ));
+
+        // Update broker node position to new center
+        if (this.brokerNode) {
+            this.brokerNode.fx = dimensions.centerX;
+            this.brokerNode.fy = dimensions.centerY;
+            this.brokerNode.x = dimensions.centerX;
+            this.brokerNode.y = dimensions.centerY;
+        }
+
+        // Restart simulation
+        this.simulation.alpha(0.3).restart();
+    }
+
+    // Create boundary force to keep nodes within container
+    createBoundaryForce(width, height) {
+        return (alpha) => {
+            this.nodes.forEach(node => {
+                if (node.type === 'broker') return; // Skip fixed broker
+
+                const nodeRadius = node.radius || this.options.collisionRadius;
+                const padding = this.options.boundaryPadding;
+
+                // Apply boundary constraints with stronger force
+                if (node.x < nodeRadius + padding) {
+                    node.vx += (nodeRadius + padding - node.x) * alpha * 0.3;
+                    node.x = Math.max(node.x, nodeRadius + padding); // Hard clamp
+                }
+                if (node.x > width - nodeRadius - padding) {
+                    node.vx += (width - nodeRadius - padding - node.x) * alpha * 0.3;
+                    node.x = Math.min(node.x, width - nodeRadius - padding); // Hard clamp
+                }
+                if (node.y < nodeRadius + padding) {
+                    node.vy += (nodeRadius + padding - node.y) * alpha * 0.3;
+                    node.y = Math.max(node.y, nodeRadius + padding); // Hard clamp
+                }
+                if (node.y > height - nodeRadius - padding) {
+                    node.vy += (height - nodeRadius - padding - node.y) * alpha * 0.3;
+                    node.y = Math.min(node.y, height - nodeRadius - padding); // Hard clamp
+                }
+            });
+        };
+    }
+
+    // Create central broker node
+    createBrokerNode() {
+        // Use actual window center for broker positioning
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        const dimensions = {
+            centerX: windowWidth / 2,
+            centerY: windowHeight / 2
+        };
+
+        console.log('NetworkAnimation: Creating broker at:', dimensions.centerX, dimensions.centerY);
+
+        this.brokerNode = {
+            id: 'broker',
+            type: 'broker',
+            label: 'MQTT Broker',
+            radius: 60,
+            baseRadius: 60,
+            color: '#ff6b6b',
+            brightness: 1.0,
+            sizeScale: 1.0,
+            messageCount: 0,
+            x: dimensions.centerX, // Current position
+            y: dimensions.centerY, // Current position
+            fx: dimensions.centerX, // Fixed position
+            fy: dimensions.centerY
+        };
+
+        this.nodes.push(this.brokerNode);
+        return this.brokerNode;
+    }
+
+    // Add customer node
+    addCustomerNode(customer, color) {
+        if (this.customerNodes.has(customer)) {
+            return this.customerNodes.get(customer);
+        }
+
+        const brokerX = this.brokerNode ? (this.brokerNode.x || this.brokerNode.fx || 400) : 400;
+        const brokerY = this.brokerNode ? (this.brokerNode.y || this.brokerNode.fy || 300) : 300;
+
+        console.log('Creating customer node:', customer, 'at broker position:', brokerX, brokerY);
+
+        const customerNode = {
+            id: customer,
+            type: 'customer',
+            label: customer,
+            radius: 45,
+            baseRadius: 45,
+            color: color,
+            brightness: 1.0,
+            sizeScale: 1.0,
+            messageCount: 0,
+            lastActivity: Date.now(),
+            // Start at broker center position with fallback
+            x: brokerX,
+            y: brokerY
+        };
+
+        this.nodes.push(customerNode);
+        this.customerNodes.set(customer, customerNode);
+
+        // Create link from broker to customer
+        this.links.push({
+            source: 'broker',
+            target: customer,
+            type: 'broker-customer'
+        });
+
+        return customerNode;
+    }
+
+    // Add topic node
+    addTopicNode(customer, topic, color) {
+        const deviceId = this.extractDeviceFromTopic(topic);
+        const topicId = `${customer}-${deviceId}`;
+
+        if (this.topicNodes.has(topicId)) {
+            const existingNode = this.topicNodes.get(topicId);
+            existingNode.lastActivity = Date.now();
+            existingNode.messageCount++;
+            // Reset brightness and size for new message activity
+            existingNode.brightness = 1.0;
+            existingNode.sizeScale = 1.0;
+            return existingNode;
+        }
+
+        // Get customer node to spawn topic near it
+        const customerNode = this.customerNodes.get(customer);
+
+        const brokerX = this.brokerNode ? (this.brokerNode.x || this.brokerNode.fx || 400) : 400;
+        const brokerY = this.brokerNode ? (this.brokerNode.y || this.brokerNode.fy || 300) : 300;
+
+        console.log('Creating topic node:', topicId, 'at broker position:', brokerX, brokerY);
+
+        const topicNode = {
+            id: topicId,
+            type: 'topic',
+            label: deviceId,
+            radius: 30,
+            baseRadius: 30,
+            color: color,
+            brightness: 1.0,
+            sizeScale: 1.0,
+            messageCount: 1,
+            lastActivity: Date.now(),
+            customer: customer,
+            device: deviceId,
+            // Start at broker center position with fallback
+            x: brokerX,
+            y: brokerY
+        };
+
+        this.nodes.push(topicNode);
+        this.topicNodes.set(topicId, topicNode);
+
+        // Create link from customer to topic
+        this.links.push({
+            source: customer,
+            target: topicId,
+            type: 'customer-topic'
+        });
+
+        return topicNode;
+    }
+
+    // Extract device ID from topic
+    extractDeviceFromTopic(topic) {
+        const parts = topic.split('/');
+        return parts.length > 1 ? parts[1] : 'device';
+    }
+
+    // Process new message
+    processMessage(messageData, customerColor) {
+        const customer = messageData.topic.split('/')[0] || 'unknown';
+
+        // Add/update customer node
+        const customerNode = this.addCustomerNode(customer, customerColor);
+        customerNode.lastActivity = Date.now();
+        customerNode.messageCount++;
+        // Reset brightness and size for new message activity
+        customerNode.brightness = 1.0;
+        customerNode.sizeScale = 1.0;
+
+        // Add/update topic node
+        const topicNode = this.addTopicNode(customer, messageData.topic, customerColor);
+
+        // Update simulation
+        this.updateSimulation();
+
+        // Update visual properties immediately for brightness/size changes
+        if (this.nodeGroups) {
+            this.nodeGroups.selectAll('circle')
+                .style('opacity', d => d.brightness)
+                .attr('r', d => d.radius * d.sizeScale);
+        }
+
+        return { customerNode, topicNode };
+    }
+
+    // Update D3 simulation
+    updateSimulation() {
+        if (!this.simulation) return;
+
+        // Update simulation with new data
+        this.simulation.nodes(this.nodes);
+        this.simulation.force('link').links(this.links);
+
+        // Restart simulation
+        this.simulation.alpha(0.3).restart();
+
+        // Update visuals
+        this.updateVisuals();
+    }
+
+    // Update SVG visuals
+    updateVisuals() {
+        if (!this.nodeGroups || !this.linkGroups) return;
+
+
+        // Update links
+        const linkSelection = this.linkGroups.selectAll('line')
+            .data(this.links);
+
+        linkSelection.enter()
+            .append('line')
+            .style('stroke', '#666')
+            .style('stroke-width', 2)
+            .style('stroke-opacity', 0.6);
+
+        linkSelection.exit().remove();
+
+        // Update nodes using UnifiedElementSystem with proper D3 data binding
+        const nodeSelection = this.nodeGroups.selectAll('g.svg-circle-group')
+            .data(this.nodes, d => d.id);
+
+        // Create nodes using proper D3 enter pattern with unified styling
+        const nodeEnter = nodeSelection.enter()
+            .append('g')
+            .attr('class', 'svg-circle-group')
+            .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`) // Set initial position
+            .style('cursor', 'pointer');
+
+        // Add circles with unified styling
+        nodeEnter.append('circle')
+            .attr('r', d => d.radius)
+            .attr('fill', d => d.color)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2);
+
+        // Add labels with unified styling (network mode values)
+        nodeEnter.append('text')
+            .attr('text-anchor', 'middle')
+            .attr('y', d => d.radius + 15) // Network mode offset
+            .attr('fill', 'white')
+            .attr('font-size', '12px') // Network mode font size
+            .attr('font-weight', 'bold') // Network mode font weight
+            .attr('font-family', 'Arial, sans-serif')
+            .text(d => d.label);
+
+        // Remove exiting nodes
+        nodeSelection.exit().remove();
+    }
+
+    // Animation tick handler
+    onTick() {
+        if (!this.linkGroups || !this.nodeGroups) return;
+
+        // Update link positions
+        this.linkGroups.selectAll('line')
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+        // Update node positions using D3 data binding
+        this.nodeGroups.selectAll('g.svg-circle-group')
+            .attr('transform', d => `translate(${d.x}, ${d.y})`);
+    }
+
+    // Create pulse animation between nodes
+    createPulse(fromNodeId, toNodeId) {
+        const fromNode = this.nodes.find(n => n.id === fromNodeId);
+        const toNode = this.nodes.find(n => n.id === toNodeId);
+
+        if (!fromNode || !toNode || !this.containerGroup) return;
+
+        // Create pulse circle
+        const pulse = this.containerGroup.append('circle')
+            .attr('r', 5)
+            .attr('cx', fromNode.x)
+            .attr('cy', fromNode.y)
+            .style('fill', '#00ff00')
+            .style('opacity', 0.8);
+
+        // Animate pulse to target
+        pulse.transition()
+            .duration(800)
+            .attr('cx', toNode.x)
+            .attr('cy', toNode.y)
+            .style('opacity', 0)
+            .on('end', () => pulse.remove());
+    }
+
+    // Clean up old nodes - disabled for network mode (nodes only fade/shrink)
+    cleanupOldNodes(maxAge = 30000) {
+        // In network mode, nodes should persist and only become smaller/dimmer
+        // No cleanup - let decay system handle visibility through brightness/size
+        return;
+    }
+
+    // Apply brightness decay
+    applyDecay(decayRate = 0.99) {
+        let updated = false;
+
+        this.nodes.forEach(node => {
+            if (node.type === 'broker') return; // Skip broker
+
+            // Apply brightness decay (fade to very dim but still visible)
+            if (node.brightness > 0.05) {
+                node.brightness *= decayRate;
+                updated = true;
+            }
+
+            // Apply size decay (shrink to very small but still visible)
+            if (node.sizeScale > 0.15) {
+                node.sizeScale *= decayRate;
+                updated = true;
+            }
+        });
+
+        if (updated && this.nodeGroups) {
+            // Update visual properties
+            this.nodeGroups.selectAll('circle')
+                .style('opacity', d => d.brightness)
+                .attr('r', d => d.radius * d.sizeScale);
+        }
+    }
+
+    // Stop and cleanup
+    stop() {
+        if (this.simulation) {
+            this.simulation.stop();
+            this.simulation = null;
+        }
+
+        this.nodes = [];
+        this.links = [];
+        this.customerNodes.clear();
+        this.topicNodes.clear();
+        this.brokerNode = null;
+
+        console.log('NetworkAnimation: Stopped and cleaned up');
+    }
+}
+
+// Phase 4: Element Lifecycle Management
+class CleanupManager {
+    constructor(containerElement, layoutCalculator) {
+        this.containerElement = containerElement;
+        this.layoutCalculator = layoutCalculator;
+        this.activeElements = new Set(); // Track all active animated elements
+        this.cleanupInterval = null;
+        this.resizeTimeout = null;
+        
+        // Cleanup configuration
+        this.config = {
+            checkInterval: 1000, // Check every 1 second (more frequent)
+            bufferZone: 100, // Smaller buffer zone for more aggressive cleanup
+            maxAge: 30000, // Maximum element age in milliseconds (30 seconds)
+            maxElements: 200 // Lower threshold for aggressive cleanup
+        };
+        
+        this.startPeriodicCleanup();
+        this.setupResizeHandler();
+    }
+    
+    // Register an animated element for tracking
+    trackElement(svgGroup, animationInfo = {}) {
+        const elementData = {
+            svgGroup: svgGroup,
+            createdAt: Date.now(),
+            lastSeenAt: Date.now(),
+            animationType: animationInfo.type || 'unknown',
+            bounds: animationInfo.bounds || null,
+            onCleanup: animationInfo.onCleanup || null
+        };
+        
+        this.activeElements.add(elementData);
+        
+        // Add cleanup data to the SVG element for easy access
+        svgGroup.node().__cleanupData = elementData;
+        
+        return elementData;
+    }
+    
+    // Remove element from tracking
+    untrackElement(svgGroup) {
+        const elementData = svgGroup.node().__cleanupData;
+        if (elementData) {
+            this.activeElements.delete(elementData);
+            delete svgGroup.node().__cleanupData;
+        }
+    }
+    
+    // Check if element is off-screen
+    isOffScreen(svgGroup, bufferZone = this.config.bufferZone) {
+        if (!svgGroup.node()) return true;
+        
+        try {
+            const transform = svgGroup.attr('transform');
+            if (!transform) return false;
+            
+            const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+            if (!match) return false;
+            
+            const x = parseFloat(match[1]);
+            const y = parseFloat(match[2]);
+            
+            // Get current effective dimensions
+            const dimensions = this.layoutCalculator ? 
+                this.layoutCalculator.getEffectiveDimensions() : 
+                {
+                    width: this.containerElement.clientWidth,
+                    height: this.containerElement.clientHeight
+                };
+            
+            // Debug logging for first few checks
+            if (Math.random() < 0.1) { // 10% of the time
+                console.log(`CleanupManager debug: Element at (${x.toFixed(1)}, ${y.toFixed(1)}), container: ${dimensions.width}x${dimensions.height}, buffer: ${bufferZone}`);
+            }
+            
+            return (
+                x < -bufferZone || 
+                x > dimensions.width + bufferZone ||
+                y < -bufferZone || 
+                y > dimensions.height + bufferZone
+            );
+        } catch (error) {
+            console.warn('Error checking element bounds:', error);
+            return true; // Remove problematic elements
+        }
+    }
+    
+    // Check if element is too old (fallback cleanup)
+    isExpired(elementData) {
+        return (Date.now() - elementData.createdAt) > this.config.maxAge;
+    }
+    
+    // Remove an element safely
+    removeElement(elementData) {
+        try {
+            if (elementData.svgGroup && elementData.svgGroup.node()) {
+                // Call custom cleanup callback if provided
+                if (elementData.onCleanup) {
+                    elementData.onCleanup();
+                }
+                
+                // Remove from DOM
+                elementData.svgGroup.remove();
+            }
+            
+            // Remove from tracking
+            this.activeElements.delete(elementData);
+        } catch (error) {
+            console.warn('Error removing element:', error);
+        }
+    }
+    
+    // Perform cleanup sweep
+    performCleanup(aggressive = false) {
+        const startTime = Date.now();
+        let removedCount = 0;
+        const elementsToRemove = [];
+        
+        // Check all tracked elements
+        for (const elementData of this.activeElements) {
+            let shouldRemove = false;
+            
+            // Check if element still exists in DOM
+            if (!elementData.svgGroup.node() || !elementData.svgGroup.node().parentNode) {
+                shouldRemove = true;
+            }
+            // Check if off-screen
+            else if (this.isOffScreen(elementData.svgGroup)) {
+                shouldRemove = true;
+            }
+            // Check if expired
+            else if (this.isExpired(elementData)) {
+                shouldRemove = true;
+            }
+            // Aggressive cleanup if too many elements
+            else if (aggressive && this.activeElements.size > this.config.maxElements) {
+                const age = Date.now() - elementData.createdAt;
+                if (age > 10000) { // Remove elements older than 10 seconds during aggressive cleanup
+                    shouldRemove = true;
+                }
+            }
+            
+            if (shouldRemove) {
+                elementsToRemove.push(elementData);
+            }
+        }
+        
+        // Remove flagged elements
+        elementsToRemove.forEach(elementData => {
+            this.removeElement(elementData);
+            removedCount++;
+        });
+        
+        const duration = Date.now() - startTime;
+        
+        if (removedCount > 0 || this.activeElements.size > 0) {
+            console.log(`Cleanup: Removed ${removedCount} elements in ${duration}ms. Active: ${this.activeElements.size}${aggressive ? ' (AGGRESSIVE)' : ''}`);
+        }
+        
+        // Also log if we have many active elements
+        if (this.activeElements.size > 50) {
+            console.warn(`CleanupManager: High element count: ${this.activeElements.size} active elements`);
+        }
+        
+        return removedCount;
+    }
+    
+    // Start periodic cleanup
+    startPeriodicCleanup() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+        }
+        
+        this.cleanupInterval = setInterval(() => {
+            const aggressive = this.activeElements.size > this.config.maxElements;
+            this.performCleanup(aggressive);
+        }, this.config.checkInterval);
+    }
+    
+    // Handle window resize events
+    setupResizeHandler() {
+        window.addEventListener('resize', () => {
+            // Debounce resize events
+            if (this.resizeTimeout) {
+                clearTimeout(this.resizeTimeout);
+            }
+            
+            this.resizeTimeout = setTimeout(() => {
+                console.log('Window resized - performing cleanup sweep');
+                this.performCleanup(true); // Aggressive cleanup on resize
+            }, 300);
+        });
+    }
+    
+    // Manual cleanup trigger
+    forceCleanup() {
+        return this.performCleanup(true);
+    }
+    
+    // Get status information
+    getStatus() {
+        return {
+            activeElements: this.activeElements.size,
+            maxElements: this.config.maxElements,
+            cleanupInterval: this.config.checkInterval
+        };
+    }
+    
+    // Stop cleanup system
+    destroy() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+        
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = null;
+        }
+        
+        // Clean up all remaining elements
+        this.activeElements.forEach(elementData => {
+            this.removeElement(elementData);
+        });
+        
+        this.activeElements.clear();
+    }
+
+    // Reset all tracking and clear all elements
+    reset() {
+        console.log('CleanupManager: Resetting all tracking');
+
+        // Clear all tracked elements
+        this.activeElements.forEach(elementData => {
+            this.removeElement(elementData);
+        });
+
+        this.activeElements.clear();
+
+        // Clear any timeouts
+        if (this.resizeTimeout) {
+            clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = null;
+        }
+
+        console.log('CleanupManager: Reset complete');
+    }
+}
+
+class UnifiedElementTracker {
+    constructor() {
+        this.activeElements = new Map(); // elementId -> elementInfo
+        this.counters = {
+            total: 0,
+            byType: {
+                radial: 0,
+                linear: 0,
+                network: 0,
+                starfield: 0
+            },
+            byStatus: {
+                animating: 0,
+                fading: 0,
+                completed: 0
+            }
+        };
+        
+        this.nextElementId = 1;
+    }
+    
+    // Register a new element
+    trackElement(svgGroup, elementInfo = {}) {
+        const elementId = `element_${this.nextElementId++}`;
+        
+        const trackedElement = {
+            id: elementId,
+            svgGroup: svgGroup,
+            type: elementInfo.type || 'unknown',
+            createdAt: Date.now(),
+            status: 'animating',
+            animationType: elementInfo.animationType || 'unknown',
+            ...elementInfo
+        };
+        
+        this.activeElements.set(elementId, trackedElement);
+        
+        // Update counters
+        this.counters.total++;
+        this.counters.byType[trackedElement.type] = (this.counters.byType[trackedElement.type] || 0) + 1;
+        this.counters.byStatus.animating++;
+        
+        // Store elementId on the SVG node for easy lookup
+        if (svgGroup && svgGroup.node()) {
+            svgGroup.node().__elementId = elementId;
+        }
+        
+        return elementId;
+    }
+    
+    // Update element status
+    updateElementStatus(elementId, newStatus) {
+        const element = this.activeElements.get(elementId);
+        if (element) {
+            const oldStatus = element.status;
+            element.status = newStatus;
+            
+            // Update status counters
+            this.counters.byStatus[oldStatus]--;
+            this.counters.byStatus[newStatus]++;
+        }
+    }
+    
+    // Remove element from tracking
+    untrackElement(elementId) {
+        const element = this.activeElements.get(elementId);
+        if (element) {
+            // Update counters
+            this.counters.total--;
+            this.counters.byType[element.type]--;
+            this.counters.byStatus[element.status]--;
+            
+            // Remove from tracking
+            this.activeElements.delete(elementId);
+            
+            // Clean up SVG node reference
+            if (element.svgGroup && element.svgGroup.node()) {
+                delete element.svgGroup.node().__elementId;
+            }
+        }
+    }
+    
+    // Get element by SVG group
+    getElementBySvg(svgGroup) {
+        if (svgGroup && svgGroup.node() && svgGroup.node().__elementId) {
+            return this.activeElements.get(svgGroup.node().__elementId);
+        }
+        return null;
+    }
+    
+    // Get current counts
+    getCounts() {
+        return {
+            total: this.counters.total,
+            byType: {...this.counters.byType},
+            byStatus: {...this.counters.byStatus}
+        };
+    }
+    
+    // Get all active elements of a specific type
+    getElementsByType(type) {
+        const elements = [];
+        for (const element of this.activeElements.values()) {
+            if (element.type === type) {
+                elements.push(element);
+            }
+        }
+        return elements;
+    }
+    
+    // Get elements older than specified age
+    getElementsOlderThan(ageMs) {
+        const cutoffTime = Date.now() - ageMs;
+        const oldElements = [];
+        
+        for (const element of this.activeElements.values()) {
+            if (element.createdAt < cutoffTime) {
+                oldElements.push(element);
+            }
+        }
+        
+        return oldElements;
+    }
+    
+    // Get performance statistics
+    getStats() {
+        const now = Date.now();
+        let totalAge = 0;
+        let oldestAge = 0;
+        
+        for (const element of this.activeElements.values()) {
+            const age = now - element.createdAt;
+            totalAge += age;
+            oldestAge = Math.max(oldestAge, age);
+        }
+        
+        return {
+            totalElements: this.counters.total,
+            averageAge: this.counters.total > 0 ? totalAge / this.counters.total : 0,
+            oldestAge: oldestAge,
+            byType: {...this.counters.byType},
+            byStatus: {...this.counters.byStatus}
+        };
+    }
+    
+    // Clear all tracking (for mode switches)
+    clearAll() {
+        this.activeElements.clear();
+        this.counters.total = 0;
+        this.counters.byType = {
+            radial: 0,
+            linear: 0, 
+            network: 0,
+            starfield: 0
+        };
+        this.counters.byStatus = {
+            animating: 0,
+            fading: 0,
+            completed: 0
+        };
+    }
+    
+    // Remove element from tracking by SVG group
+    removeElement(svgGroup) {
+        if (!svgGroup || !svgGroup.node()) {
+            return false;
+        }
+        
+        const elementId = svgGroup.node().__elementId;
+        if (!elementId) {
+            return false;
+        }
+        
+        const element = this.activeElements.get(elementId);
+        if (!element) {
+            return false;
+        }
+        
+        // Update counters
+        this.counters.total = Math.max(0, this.counters.total - 1);
+        this.counters.byType[element.type] = Math.max(0, (this.counters.byType[element.type] || 1) - 1);
+        this.counters.byStatus[element.status] = Math.max(0, (this.counters.byStatus[element.status] || 1) - 1);
+        
+        // Remove from tracking
+        this.activeElements.delete(elementId);
+        
+        // Clear element ID from SVG node
+        delete svgGroup.node().__elementId;
+        
+        return true;
+    }
+    
+    // Debug info
+    getDebugInfo() {
+        const elements = Array.from(this.activeElements.values()).map(el => ({
+            id: el.id,
+            type: el.type,
+            status: el.status,
+            age: Date.now() - el.createdAt
+        }));
+        
+        return {
+            counts: this.getCounts(),
+            stats: this.getStats(),
+            elements: elements
+        };
+    }
+
+    // Reset all tracking
+    reset() {
+        console.log('UnifiedElementTracker: Resetting all tracking');
+
+        this.activeElements.clear();
+        this.counters.total = 0;
+        this.counters.byType = {
+            radial: 0,
+            linear: 0,
+            network: 0,
+            starfield: 0
+        };
+        this.counters.byStatus = {
+            animating: 0,
+            fading: 0,
+            completed: 0
+        };
+
+        console.log('UnifiedElementTracker: Reset complete');
+    }
+}
+
+/**
+ * Mode Switching Manager - Ensures clean transitions between visualization modes
+ */
+class ModeSwitchingManager {
+    constructor(visualizer) {
+        this.visualizer = visualizer;
+        this.currentMode = null;
+        this.isTransitioning = false;
+        this.transitionTimeout = null;
+    }
+
+    // Clean switch to new mode with proper cleanup
+    switchMode(newMode) {
+        if (this.isTransitioning) {
+            console.log('ModeSwitchingManager: Mode switch already in progress, ignoring request');
+            return false;
+        }
+
+        if (this.currentMode === newMode) {
+            console.log(`ModeSwitchingManager: Already in ${newMode} mode`);
+            return true;
+        }
+
+        console.log(`ModeSwitchingManager: Switching from ${this.currentMode || 'none'} to ${newMode}`);
+
+        this.isTransitioning = true;
+
+        // Step 1: Clean up current mode
+        this.cleanupCurrentMode();
+
+        // Step 2: Update UI states
+        this.updateModeButtons(newMode);
+
+        // Step 3: Initialize new mode
+        this.initializeNewMode(newMode);
+
+        // Step 4: Complete transition
+        this.completeTransition(newMode);
+
+        return true;
+    }
+
+    // Clean up all elements and state from current mode
+    cleanupCurrentMode() {
+        if (!this.currentMode) return;
+
+        console.log(`ModeSwitchingManager: Cleaning up ${this.currentMode} mode`);
+
+        // Clear all active animations and elements
+        if (this.visualizer.unifiedContainer) {
+            this.visualizer.unifiedContainer.cleanup();
+        }
+
+        // Reset cleanup manager
+        if (this.visualizer.cleanupManager) {
+            this.visualizer.cleanupManager.reset();
+        }
+
+        // Clear element tracker
+        if (this.visualizer.elementTracker) {
+            this.visualizer.elementTracker.reset();
+        }
+
+        // Reset animation counters
+        this.visualizer.activeRadialAnimations = 0;
+
+        // Stop NetworkAnimation if it exists
+        if (this.visualizer.networkAnimation) {
+            this.visualizer.networkAnimation.stop();
+            this.visualizer.networkAnimation = null;
+        }
+
+        // Remove mode-specific CSS classes
+        this.visualizer.domElements.messageFlow.classList.remove(
+            'starfield-mode', 'radial-mode', 'network-mode', 'bubbles-mode'
+        );
+
+        // Clear any mode-specific timers or intervals
+        this.clearModeTimers();
+    }
+
+    // Update button states to reflect new mode
+    updateModeButtons(newMode) {
+        // Update collapsed sidebar icons
+        this.visualizer.domElements.vizIconButtons.forEach(btn => {
+            if (btn.dataset.mode === newMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        // Update expanded sidebar buttons
+        this.visualizer.domElements.vizModeButtons.forEach(btn => {
+            if (btn.dataset.mode === newMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    // Initialize the new visualization mode
+    initializeNewMode(newMode) {
+        console.log(`ModeSwitchingManager: Initializing ${newMode} mode`);
+
+        // Set the new mode
+        this.visualizer.visualizationMode = newMode;
+
+        // Add mode-specific CSS class
+        this.visualizer.domElements.messageFlow.classList.add(`${newMode}-mode`);
+
+        // Initialize unified container for unified modes
+        if (['bubbles', 'radial', 'starfield'].includes(newMode)) {
+            this.initializeUnifiedMode(newMode);
+        } else if (newMode === 'network') {
+            this.initializeNetworkMode();
+        }
+
+        // Update layout for new mode
+        if (this.visualizer.layoutCalculator && this.visualizer.unifiedContainer) {
+            this.visualizer.unifiedContainer.updateDimensions(this.visualizer.layoutCalculator);
+        }
+
+        // Update NetworkAnimation dimensions for network mode
+        if (this.visualizer.networkAnimation) {
+            this.visualizer.networkAnimation.updateDimensions();
+        }
+    }
+
+    // Initialize unified container modes (bubbles, radial, starfield)
+    initializeUnifiedMode(mode) {
+        // Initialize unified container if not exists
+        if (!this.visualizer.unifiedContainer) {
+            this.visualizer.unifiedContainer = new UnifiedContainer(this.visualizer.domElements.messageFlow);
+        }
+
+        // Initialize with layout calculator
+        this.visualizer.unifiedContainer.initialize(this.visualizer.layoutCalculator);
+
+        console.log(`ModeSwitchingManager: Unified mode ${mode} initialized`);
+    }
+
+    // Initialize network mode using unified container and NetworkAnimation
+    initializeNetworkMode() {
+        console.log('ModeSwitchingManager: Initializing network mode with unified architecture');
+
+        // Initialize unified container for network mode
+        if (!this.visualizer.unifiedContainer) {
+            this.visualizer.unifiedContainer = new UnifiedContainer(this.visualizer.domElements.messageFlow);
+        }
+
+        // Initialize container with layout calculator
+        this.visualizer.unifiedContainer.initialize(this.visualizer.layoutCalculator);
+
+        // Create NetworkAnimation instance
+        const containerGroup = this.visualizer.unifiedContainer.getContainer();
+        this.visualizer.networkAnimation = new NetworkAnimation(
+            containerGroup,
+            this.visualizer.layoutCalculator,
+            this.visualizer.elementSystem
+        );
+
+        // Initialize the network simulation
+        this.visualizer.networkAnimation.initialize();
+
+        // Set up brightness decay interval for network mode
+        if (this.visualizer.brightnessInterval) {
+            clearInterval(this.visualizer.brightnessInterval);
+        }
+
+        this.visualizer.brightnessInterval = setInterval(() => {
+            if (this.visualizer.visualizationMode === 'network' && this.visualizer.networkAnimation) {
+                this.visualizer.networkAnimation.applyDecay(0.99);
+                this.visualizer.networkAnimation.cleanupOldNodes(30000);
+            }
+        }, 500);
+
+        console.log('ModeSwitchingManager: Network mode initialized with unified architecture');
+    }
+
+    // Complete the mode transition
+    completeTransition(newMode) {
+        this.currentMode = newMode;
+        this.isTransitioning = false;
+
+        // Clear any pending transition timeout
+        if (this.transitionTimeout) {
+            clearTimeout(this.transitionTimeout);
+            this.transitionTimeout = null;
+        }
+
+        console.log(`ModeSwitchingManager: Transition to ${newMode} complete`);
+
+        // Trigger any mode-specific post-initialization
+        this.postModeInitialization(newMode);
+    }
+
+    // Mode-specific post-initialization tasks
+    postModeInitialization(mode) {
+        switch (mode) {
+            case 'network':
+                // Network mode might need additional setup
+                break;
+            case 'starfield':
+                // Starfield mode might need background setup
+                break;
+            default:
+                // Other modes are ready immediately
+                break;
+        }
+    }
+
+    // Clear any mode-specific timers or intervals
+    clearModeTimers() {
+        // Clear any network mode intervals
+        if (this.visualizer.brightnessInterval) {
+            clearInterval(this.visualizer.brightnessInterval);
+            this.visualizer.brightnessInterval = null;
+        }
+
+        // Stop any D3 simulations
+        if (this.visualizer.d3Simulation) {
+            this.visualizer.d3Simulation.stop();
+            this.visualizer.d3Simulation = null;
+        }
+    }
+
+    // Get current transition state
+    getState() {
+        return {
+            currentMode: this.currentMode,
+            isTransitioning: this.isTransitioning,
+            hasActiveElements: this.visualizer.elementTracker ?
+                             this.visualizer.elementTracker.getCounts().total > 0 : false
+        };
+    }
+
+    // Force complete any pending transition (emergency cleanup)
+    forceCompleteTransition() {
+        if (this.isTransitioning) {
+            console.warn('ModeSwitchingManager: Force completing transition');
+            this.isTransitioning = false;
+            if (this.transitionTimeout) {
+                clearTimeout(this.transitionTimeout);
+                this.transitionTimeout = null;
+            }
+        }
+    }
+}
+
 class MQTTVisualizer {
     constructor() {
+        // Initialize screen dimensions - will be calculated when needed
+        this.SCREEN_WIDTH = null;
+        this.SCREEN_HEIGHT = null;
+        this.SCREEN_CENTER_X = null;
+        this.SCREEN_CENTER_Y = null;
+        
+        // Unified container system
+        this.unifiedContainer = null;
+        
+        // Message processing system
+        this.messageProcessor = new MessageProcessor(this);
+        
+        // Unified element system (all modes use same circles)
+        this.elementSystem = new UnifiedElementSystem('circle');
+        
+        // Unified element tracking system
+        this.elementTracker = new UnifiedElementTracker();
+
+        // Mode switching management system
+        this.modeSwitchingManager = new ModeSwitchingManager(this);
+
+        // Layout management system
+        this.layoutCalculator = null; // Initialized after DOM elements
+        
         // Connection state
         this.websocket = null;
         this.isConnected = false;
@@ -55,7 +2381,7 @@ class MQTTVisualizer {
         this.activeTopics = new Set();
         
         // Visualization state
-        this.visualizationMode = 'bubbles';
+        this.visualizationMode = null; // Will be set by ModeSwitchingManager
         this.currentAngle = 0;
         
         // Direction control for bubbles mode
@@ -77,11 +2403,30 @@ class MQTTVisualizer {
         // Performance optimization: cache DOM elements
         this.domElements = this.cacheDOMElements();
         
+        // Initialize layout management system
+        this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
+        
+        // Smart cleanup system for element lifecycle management
+        this.cleanupManager = new CleanupManager(this.domElements.messageFlow, this.layoutCalculator);
+        
         // Initialize all systems
         this.initialize();
-        
+
+        // Set initial visualization mode using ModeSwitchingManager
+        // Default to radial mode (active mode in HTML)
+        this.modeSwitchingManager.switchMode('radial');
+
         // Start frame rate monitoring
         this.startFrameRateMonitoring();
+    }
+
+    calculateScreenDimensions() {
+        // Use the message flow container dimensions instead of full window
+        const container = this.domElements.messageFlow;
+        this.SCREEN_WIDTH = container.clientWidth;
+        this.SCREEN_HEIGHT = container.clientHeight;
+        this.SCREEN_CENTER_X = this.SCREEN_WIDTH / 2;
+        this.SCREEN_CENTER_Y = this.SCREEN_HEIGHT / 2;
     }
 
     cacheDOMElements() {
@@ -204,10 +2549,23 @@ class MQTTVisualizer {
 
     initializeSidebarToggle() {
         const toggleButton = document.getElementById('sidebarToggle');
-        
+
         if (toggleButton && this.domElements.sidebar) {
             toggleButton.addEventListener('click', () => {
                 this.domElements.sidebar.classList.toggle('collapsed');
+
+                // Update unified container position when sidebar state changes
+                if (this.unifiedContainer && this.layoutCalculator) {
+                    // Small delay to allow CSS transition to complete
+                    setTimeout(() => {
+                        this.unifiedContainer.updateDimensions(this.layoutCalculator);
+
+                        // Also update NetworkAnimation dimensions if in network mode
+                        if (this.networkAnimation) {
+                            this.networkAnimation.updateDimensions();
+                        }
+                    }, 50);
+                }
             });
         }
     }
@@ -756,25 +3114,40 @@ class MQTTVisualizer {
         }
     }
 
-    // Network Graph Implementation
+    // Network Graph Implementation - Updated for unified architecture
     updateNetworkGraph(messageData) {
-        if (!this.d3Simulation) {
-            this.initializeD3Network();
+        // Ensure network animation is initialized
+        if (!this.networkAnimation) {
+            console.warn('NetworkAnimation not initialized for network mode');
+            return;
         }
-        
+
         const customer = this.extractCustomerFromTopic(messageData.topic);
-        const topic = messageData.topic;
-        
-        // Add or update nodes and links
-        this.addNetworkMessage(customer, topic, messageData);
-        
-        // Update the D3 simulation
-        this.updateD3Simulation();
-        
-        // Create pulse animation
-        this.createD3Pulse(customer, topic);
+        const customerColor = this.getCustomerColor(customer);
+
+        // Process message through NetworkAnimation
+        const { customerNode, topicNode } = this.networkAnimation.processMessage(messageData, customerColor);
+
+        // Create pulse animation from broker to customer to topic
+        if (customerNode && topicNode) {
+            // Pulse from broker to customer
+            this.networkAnimation.createPulse('broker', customer);
+
+            // Delay pulse from customer to topic
+            setTimeout(() => {
+                this.networkAnimation.createPulse(customer, topicNode.id);
+            }, 400);
+        }
+
+        console.log(`NetworkAnimation: Processed message for ${customer}`);
     }
-    
+
+    // Initialize network mode (wrapper for D3 network initialization)
+    initializeNetworkMode() {
+        console.log('MQTTVisualizer: Initializing network mode');
+        this.initializeD3Network();
+    }
+
     initializeD3Network() {
         // Clear existing content but preserve UI elements
         const existingSvg = this.domElements.messageFlow.querySelector('#d3-network');
@@ -881,10 +3254,10 @@ class MQTTVisualizer {
         const brokerNode = {
             id: 'broker',
             type: 'broker',
-            x: flowWidth / 2,
-            y: flowHeight / 2,
-            fx: flowWidth / 2, // Fix position
-            fy: flowHeight / 2, // Fix position
+            x: this.SCREEN_CENTER_X,
+            y: this.SCREEN_CENTER_Y,
+            fx: this.SCREEN_CENTER_X, // Fix position
+            fy: this.SCREEN_CENTER_Y, // Fix position
             radius: 60,
             baseRadius: 60, // Store original radius
             color: '#4CAF50',
@@ -1204,8 +3577,26 @@ class MQTTVisualizer {
         // Add circles with initial positions, brightness and size
         nodeEnter.append('circle')
             .attr('r', d => d.radius) // Uses current radius (baseRadius * sizeScale)
-            .attr('cx', d => d.x || 0)
-            .attr('cy', d => d.y || 0)
+            .attr('cx', d => {
+                // Only use broker center positioning for network graph mode
+                if (this.visualizationMode === 'network') {
+                    // Start new nodes at broker center if not positioned
+                    if (d.x !== undefined && d.x !== null) return d.x;
+                    const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
+                    return brokerNode ? brokerNode.x : this.SCREEN_CENTER_X;
+                }
+                return d.x || 0;
+            })
+            .attr('cy', d => {
+                // Only use broker center positioning for network graph mode
+                if (this.visualizationMode === 'network') {
+                    // Start new nodes at broker center if not positioned
+                    if (d.y !== undefined && d.y !== null) return d.y;
+                    const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
+                    return brokerNode ? brokerNode.y : this.SCREEN_CENTER_Y;
+                }
+                return d.y || 0;
+            })
             .attr('fill', d => d.color)
             .attr('stroke', '#fff')
             .attr('stroke-width', d => d.type === 'broker' ? 3 : 2)
@@ -1215,8 +3606,31 @@ class MQTTVisualizer {
         // Add labels with initial positions and brightness
         const textElements = nodeEnter.append('text')
             .attr('text-anchor', 'middle')
-            .attr('x', d => d.x || 0)
-            .attr('y', d => (d.y || 0) + (d.radius || 20) + 25) // Position below circle: radius + 25px margin
+            .attr('x', d => {
+                // Only use broker center positioning for network graph mode
+                if (this.visualizationMode === 'network') {
+                    // Start new node labels at broker center if not positioned
+                    if (d.x !== undefined && d.x !== null) return d.x;
+                    const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
+                    return brokerNode ? brokerNode.x : this.SCREEN_CENTER_X;
+                }
+                return d.x || 0;
+            })
+            .attr('y', d => {
+                // Only use broker center positioning for network graph mode
+                let baseY;
+                if (this.visualizationMode === 'network') {
+                    if (d.y !== undefined && d.y !== null) {
+                        baseY = d.y;
+                    } else {
+                        const brokerNode = this.d3Nodes.find(n => n.id === 'broker');
+                        baseY = brokerNode ? brokerNode.y : this.SCREEN_CENTER_Y;
+                    }
+                } else {
+                    baseY = d.y || 0;
+                }
+                return baseY + (d.radius || 20) + 25; // Position below circle: radius + 25px margin
+            })
             .attr('fill', 'white')
             .attr('font-size', d => {
                 if (d.type === 'broker') return '23px';  // 15px * 1.5 = 22.5px → 23px
@@ -1269,6 +3683,12 @@ class MQTTVisualizer {
         const topicNode = this.d3Nodes.find(n => n.id === topicNodeId);
         
         if (!brokerNode || !customerNode) return;
+        
+        // Ensure broker is at screen center if not positioned
+        if (!brokerNode.x || !brokerNode.y || (brokerNode.x === 0 && brokerNode.y === 0)) {
+            brokerNode.x = brokerNode.fx || this.SCREEN_CENTER_X;
+            brokerNode.y = brokerNode.fy || this.SCREEN_CENTER_Y;
+        }
         
         // Create pulse circle
         const pulse = this.d3Container.pulses.append('circle')
@@ -2785,10 +5205,10 @@ class MQTTVisualizer {
             this.d3Simulation = null;
         }
         
-        // Create D3 SVG for bubbles
+        // Create D3 SVG for bubbles - use container dimensions to avoid sidebar
         const container = this.domElements.messageFlow;
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
         
         this.d3BubblesSvg = d3.select(container)
             .append('svg')
@@ -2822,329 +5242,160 @@ class MQTTVisualizer {
     }
     
     createD3Bubble(messageData) {
-        const flowWidth = window.innerWidth;
-        const flowHeight = window.innerHeight;
-        const color = this.getTopicColor(messageData.topic);
-        const customer = this.extractCustomerFromTopic(messageData.topic);
-        
-        // Calculate starting position based on direction
-        let startX, startY;
-        const margin = 100;
-        const cardWidth = 300; // Approximate bubble width
-        
-        if (this.bubbleDirection.y === -1) {
-            // Moving up: start from bottom
-            startX = margin + Math.random() * (flowWidth - cardWidth - 2 * margin);
-            startY = flowHeight + 100;
-        } else if (this.bubbleDirection.y === 1) {
-            // Moving down: start from top
-            startX = margin + Math.random() * (flowWidth - cardWidth - 2 * margin);
-            startY = -100;
-        } else if (this.bubbleDirection.x === -1) {
-            // Moving left: start from right
-            startX = flowWidth + 100;
-            startY = margin + Math.random() * (flowHeight - 2 * margin);
-        } else if (this.bubbleDirection.x === 1) {
-            // Moving right: start from left
-            startX = -cardWidth - 100;
-            startY = margin + Math.random() * (flowHeight - 2 * margin);
+        // Unified Falling Boxes Mode Implementation - Task 5.1 Complete
+        if (!this.unifiedContainer) {
+            console.warn('Unified container not initialized for falling boxes mode');
+            return;
         }
         
-        // Create bubble data object
-        const bubbleData = {
-            id: Date.now() + Math.random(),
-            x: startX,
-            y: startY,
-            startX: startX,
-            startY: startY,
-            color: color,
-            customer: customer,
-            topic: messageData.topic,
-            time: this.formatTime(messageData.timestamp),
-            messageData: messageData,
-            startTime: Date.now()
-        };
+        // Process message data using unified MessageProcessor
+        const processedMessage = this.messageProcessor.processMessage(messageData);
         
-        this.d3BubblesData.push(bubbleData);
+        // Get container and dimensions from unified system
+        const container = this.unifiedContainer.getContainer();
+        const dimensions = this.unifiedContainer.getDimensions();
         
-        // Create SVG group for this bubble
-        const bubbleGroup = this.d3BubblesContainer.bubbles
-            .append('g')
-            .attr('class', 'bubble-group')
-            .attr('transform', `translate(${startX}, ${startY})`);
-        
-        // Create bubble rectangle with rounded corners and brighter border
-        const bubbleRect = bubbleGroup
-            .append('rect')
-            .attr('class', 'bubble-rect')
-            .attr('width', 280)
-            .attr('height', 80)
-            .attr('rx', 10)
-            .attr('ry', 10)
-            .attr('x', -140) // Center the rectangle
-            .attr('y', -40)  // Center the rectangle
-            .style('fill', color)
-            .style('stroke', d3.color(color).brighter(1.5))
-            .style('stroke-width', '3px')
-            .style('opacity', 1);
-        
-        // Add text labels
-        const textGroup = bubbleGroup.append('g').attr('class', 'text-group');
-        
-        // Customer name
-        textGroup.append('text')
-            .attr('class', 'customer-text')
-            .attr('x', 0)
-            .attr('y', -10)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '18px')
-            .style('font-weight', 'bold')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(customer);
-        
-        // Topic
-        textGroup.append('text')
-            .attr('class', 'topic-text')
-            .attr('x', 0)
-            .attr('y', 8)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '14px')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(messageData.topic);
-        
-        // Time
-        textGroup.append('text')
-            .attr('class', 'time-text')
-            .attr('x', 0)
-            .attr('y', 26)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '14px')
-            .style('fill', '#fff')
-            .style('text-shadow', '0 4px 8px rgba(0, 0, 0, 0.9)')
-            .text(bubbleData.time);
-        
-        // Add click handler
-        bubbleGroup
-            .style('cursor', 'pointer')
-            .on('click', () => {
-                this.showMessageModal(messageData);
-            });
-        
-        // Store reference to the SVG group in the data
-        bubbleData.svgGroup = bubbleGroup;
-        
-        // Start animation
-        this.animateD3Bubble(bubbleData);
-    }
-    
-    animateD3Bubble(bubbleData) {
-        const duration = 20000; // 20 seconds
-        const flowWidth = window.innerWidth;
-        const flowHeight = window.innerHeight;
-        const buffer = 500;
-        
-        // Calculate target position based on direction
-        let targetX, targetY;
-        
-        if (this.bubbleDirection.x !== 0) {
-            // Horizontal movement
-            const travelDistance = flowWidth + buffer * 2;
-            targetX = bubbleData.startX + (this.bubbleDirection.x * travelDistance);
-            targetY = bubbleData.startY; // No vertical movement
-        } else {
-            // Vertical movement
-            const travelDistance = flowHeight + buffer * 2;
-            targetX = bubbleData.startX; // No horizontal movement
-            targetY = bubbleData.startY + (this.bubbleDirection.y * travelDistance);
-        }
-        
-        // Use D3 transition with linear easing for constant velocity
-        bubbleData.svgGroup
-            .transition()
-            .duration(duration)
-            .ease(d3.easeLinear) // Linear easing for constant velocity
-            .attr('transform', `translate(${targetX}, ${targetY})`)
-            .on('end', () => {
-                // Remove bubble when animation completes
-                this.removeD3Bubble(bubbleData);
-            });
-        
-        // Check if bubble goes off screen and remove early
-        const checkOffScreen = () => {
-            const currentTransform = bubbleData.svgGroup.attr('transform');
-            if (!currentTransform) return;
-            
-            const match = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
-            if (!match) return;
-            
-            const currentX = parseFloat(match[1]);
-            const currentY = parseFloat(match[2]);
-            
-            const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
-                               currentY < -buffer || currentY > flowHeight + buffer);
-            
-            if (isOffScreen) {
-                this.removeD3Bubble(bubbleData);
-            } else {
-                // Continue checking
-                setTimeout(checkOffScreen, 100);
+        // Create LinearAnimation with current bubble direction
+        const linearAnimation = new LinearAnimation(
+            container, 
+            this.bubbleDirection, 
+            this.layoutCalculator,
+            {
+                duration: 15000, // 15 seconds like original
+                margin: 100,
+                elementSize: { width: 50, height: 50 }
             }
-        };
+        );
         
-        // Start off-screen checking
-        setTimeout(checkOffScreen, 100);
-    }
-    
-    removeD3Bubble(bubbleData) {
-        if (bubbleData.svgGroup) {
-            bubbleData.svgGroup.remove();
-        }
+        // Calculate starting position using LinearAnimation logic
+        const startPos = linearAnimation.getStartPosition(dimensions.width, dimensions.height);
         
-        // Remove from data array
-        const index = this.d3BubblesData.findIndex(d => d.id === bubbleData.id);
-        if (index > -1) {
-            this.d3BubblesData.splice(index, 1);
-        }
+        // Create circle using Unified Element System
+        const circle = this.elementSystem.createSVGElement(
+            container, 
+            processedMessage, 
+            startPos.x, 
+            startPos.y
+        );
+        
+        // Add click handler for message modal
+        circle.on('click', () => {
+            this.showMessageModal(messageData);
+        });
+        
+        // Track element with unified tracker
+        this.elementTracker.trackElement(circle, {
+            type: 'linear',
+            status: 'animating',
+            createdAt: Date.now(),
+            messageData: processedMessage
+        });
+        
+        // Register element with cleanup manager for automatic cleanup
+        this.cleanupManager.trackElement(circle, {
+            type: 'linear',
+            onCleanup: () => {
+                this.elementTracker.removeElement(circle);
+                console.log('CleanupManager: Removed stuck falling element');
+            }
+        });
+        
+        // Start linear animation
+        linearAnimation.animateSVGElement(
+            circle, 
+            dimensions.width, 
+            dimensions.height,
+            () => {
+                // Animation complete - untrack element
+                this.cleanupManager.untrackElement(circle);
+                this.elementTracker.removeElement(circle);
+                console.log('LinearAnimation: Element completed and removed');
+            }
+        );
+        
+        console.log('LinearAnimation: Started falling element, will travel from', linearAnimation.getStartPosition(dimensions.width, dimensions.height), 'to end position');
+        
+        console.log('Task 5.1: Created falling circle with direction:', this.bubbleDirection);
     }
 
     // D3 Radial Implementation (using original DOM bubbles with D3 animation)
     createD3RadialBubble(messageData) {
-        // No message cap - let's test unlimited performance
+        // Unified Radial Mode Implementation - Task 5.2 Complete
+        if (!this.unifiedContainer) {
+            console.warn('Unified container not initialized for radial mode');
+            return;
+        }
         
-        // Create the bubble using the original method to maintain visual consistency
-        const bubble = this.getBubbleFromPool();
-        bubble.className = 'message-bubble';
+        // Respect animation limits for performance
+        if (this.activeRadialAnimations >= this.maxRadialAnimations) {
+            return; // Skip creation if too many active animations
+        }
         
-        // Get or create color for topic
-        const color = this.getTopicColor(messageData.topic);
+        // Process message data using unified MessageProcessor
+        const processedMessage = this.messageProcessor.processMessage(messageData);
         
-        // Apply original styling (same as createMessageBubble)
-        const styles = {
-            background: `linear-gradient(135deg, ${color}, ${color}E6)`,
-            border: `2px solid ${color}`,
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
-            filter: 'brightness(1.0)'
-        };
+        // Get container and dimensions from unified system
+        const container = this.unifiedContainer.getContainer();
+        const dimensions = this.unifiedContainer.getDimensions();
         
-        bubble.dataset.brightness = '1.0';
-        bubble.dataset.scale = '0.3'; // Start small for radial mode
-        bubble.dataset.createdAt = Date.now().toString();
+        // Create circle using Unified Element System
+        const circle = this.elementSystem.createSVGElement(
+            container, 
+            processedMessage, 
+            dimensions.centerX, 
+            dimensions.centerY
+        );
         
-        Object.assign(bubble.style, styles);
-        
-        // Create message content with template (same as original)
-        const customer = this.extractCustomerFromTopic(messageData.topic);
-        const template = document.createElement('template');
-        template.innerHTML = `
-            <div class="message-customer">${customer}</div>
-            <div class="message-topic">${messageData.topic}</div>
-            <div class="message-time">${this.formatTime(messageData.timestamp)}</div>
-        `;
-        
-        bubble.appendChild(template.content);
-        
-        // Add click event listener
-        bubble.addEventListener('click', () => {
+        // Add click handler for message modal
+        circle.on('click', () => {
             this.showMessageModal(messageData);
         });
         
-        // Position at center (same as original)
-        const flowWidth = this.domElements.messageFlow.clientWidth;
-        const flowHeight = this.domElements.messageFlow.clientHeight;
-        const startX = flowWidth / 2;
-        const startY = flowHeight / 2;
+        // Track element with unified tracker
+        this.elementTracker.trackElement(circle, {
+            type: 'radial',
+            status: 'animating',
+            createdAt: Date.now(),
+            messageData: processedMessage
+        });
         
-        // Set initial position and styling (same as original)
-        bubble.style.transition = 'none';
-        bubble.style.left = `${startX}px`;
-        bubble.style.top = `${startY}px`;
-        bubble.style.opacity = '1';
-        bubble.style.transform = 'scale(1)'; // Original starts at scale(1)
-        
-        // Set z-index (same as original)
-        bubble.style.zIndex = this.messageZIndex;
-        this.getNextZIndex();
-        
-        // Add to DOM
-        this.domElements.messageFlow.appendChild(bubble);
-        
-        // Use D3 for smooth animation instead of requestAnimationFrame
-        this.animateD3RadialBubble(bubble, startX, startY);
-        
-        // Store reference for cleanup
-        const bubbleId = Date.now() + Math.random();
-        this.activeAnimations.set(bubbleId, bubble);
-    }
-    
-    animateD3RadialBubble(bubble, startX, startY) {
-        this.activeRadialAnimations++;
-        
-        // Generate random angle and calculate distance to screen edge
-        const angle = Math.random() * 2 * Math.PI;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
-        
-        // Calculate distance to screen edge - use maximum possible distance to ensure we reach edge
-        const flowWidth = this.domElements.messageFlow.clientWidth;
-        const flowHeight = this.domElements.messageFlow.clientHeight;
-        
-        // Calculate distance to furthest corner from center plus buffer
-        const maxDistanceToCorner = Math.sqrt((flowWidth/2) * (flowWidth/2) + (flowHeight/2) * (flowHeight/2));
-        const totalDistance = maxDistanceToCorner + 300; // Extra buffer to ensure off-screen
-        
-        const targetX = startX + dirX * totalDistance;
-        const targetY = startY + dirY * totalDistance;
-        
-        const duration = 20000; // 20 seconds (same as original)
-        const fadeStartPoint = 0.2; // Start fading after 20% (same as original)
-        
-        // Use requestAnimationFrame approach (like original) for reliable animation
-        const startTime = Date.now();
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Animate straight outward to calculated target
-            const currentX = startX + (targetX - startX) * progress;
-            const currentY = startY + (targetY - startY) * progress;
-            
-            // Calculate scaling based on progress (start small, grow larger)
-            const minScale = 0.3;
-            const maxScale = 1.5;
-            const scale = minScale + (progress * (maxScale - minScale));
-            
-            // Calculate fade based on progress
-            const opacity = progress < fadeStartPoint ? 1 : 
-                Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
-            
-            bubble.style.left = `${currentX}px`;
-            bubble.style.top = `${currentY}px`;
-            bubble.style.opacity = opacity;
-            bubble.style.transform = `scale(${scale})`;
-            
-            if (progress < 1 && opacity > 0 && bubble.parentNode) {
-                requestAnimationFrame(animate);
-            } else if (bubble.parentNode) {
-                // Remove bubble when animation completes or becomes fully transparent
-                this.removeRadialBubble(bubble);
+        // Register element with cleanup manager for automatic cleanup
+        this.cleanupManager.trackElement(circle, {
+            type: 'radial',
+            onCleanup: () => {
+                this.activeRadialAnimations--;
+                this.elementTracker.removeElement(circle);
+                console.log('CleanupManager: Removed stuck radial element');
             }
-        };
+        });
         
-        animate();
+        // Create RadialAnimation for burst effect
+        const radialAnimation = new RadialAnimation(dimensions.centerX, dimensions.centerY, {
+            duration: 8000, // 8 seconds like original radial mode
+            fadeStartPoint: 0.2, // Start fading at 20% of journey
+            elementSize: { width: 50, height: 50 }
+        });
+        
+        // Start radial burst animation
+        radialAnimation.animateSVGElement(
+            circle, 
+            dimensions.width, 
+            dimensions.height,
+            () => {
+                // Animation complete - untrack and decrement counter
+                this.cleanupManager.untrackElement(circle);
+                this.elementTracker.removeElement(circle);
+                this.activeRadialAnimations--;
+                console.log('RadialAnimation: Element completed and removed');
+            }
+        );
+        
+        console.log('RadialAnimation: Started radial burst from center:', dimensions.centerX, dimensions.centerY);
+        
+        // Increment active animation counter
+        this.activeRadialAnimations++;
     }
     
-    removeRadialBubble(bubble) {
-        if (bubble && bubble.parentNode) {
-            bubble.parentNode.removeChild(bubble);
-            this.returnBubbleToPool(bubble);
-            this.activeRadialAnimations--;
-        }
-    }
 
     // Visualization switching
     switchVisualization(mode) {
@@ -3153,45 +5404,9 @@ class MQTTVisualizer {
             const activeBtn = document.querySelector('.viz-icon-btn.active, .viz-mode-btn.active');
             mode = activeBtn ? activeBtn.dataset.mode : 'bubbles';
         }
-        
-        this.visualizationMode = mode;
-        
-        // Update active states for both icon and mode buttons
-        this.updateVisualizationButtonStates(mode);
-        
-        // Clear current visualizations
-        this.clearAllVisualizations();
-        
-        // Reset color legend and topic tracking
-        this.resetVisualizationState();
-        
-        // Remove all mode classes first
-        this.domElements.messageFlow.classList.remove('network-mode', 'starfield-mode', 'radial-mode');
-        
-        // Show/hide appropriate containers using cached elements
-        if (mode === 'network') {
-            this.domElements.messageFlow.style.display = 'block';
-            this.domElements.messageFlow.classList.add('network-mode');
-            
-            // Initialize network graph if switching to network mode
-            if (this.visualizationMode !== 'network') {
-                this.initializeD3Network();
-            }
-        } else if (mode === 'bubbles' || mode === 'radial' || mode === 'starfield') {
-            this.domElements.messageFlow.style.display = 'block';
-            
-            // Add specific classes for different modes
-            if (mode === 'starfield') {
-                this.domElements.messageFlow.classList.add('starfield-mode');
-            } else if (mode === 'radial') {
-                this.domElements.messageFlow.classList.add('radial-mode');
-            } else if (mode === 'bubbles') {
-                // Initialize D3 bubbles if switching to bubbles mode
-                if (this.visualizationMode !== 'bubbles') {
-                    this.initializeD3Bubbles();
-                }
-            }
-        }
+
+        // Use the unified mode switching manager for clean transitions
+        return this.modeSwitchingManager.switchMode(mode);
     }
     
     // Update active states for visualization buttons
@@ -3236,22 +5451,19 @@ class MQTTVisualizer {
         this.activeAnimations.clear();
         this.activeRadialAnimations = 0;
         
-        // Clear D3.js network graph
-        const existingD3Svg = document.querySelector('#d3-network');
-        if (existingD3Svg) {
-            existingD3Svg.remove();
+        // Clean up unified container (removes all visualizations)
+        if (this.unifiedContainer) {
+            this.unifiedContainer.cleanup();
         }
         
-        // Clear D3.js bubbles
-        const existingD3Bubbles = document.querySelector('#d3-bubbles');
-        if (existingD3Bubbles) {
-            existingD3Bubbles.remove();
-        }
-        
-        // Clear D3 bubbles data
+        // Clear legacy references
         this.d3BubblesSvg = null;
         this.d3BubblesContainer = null;
         this.d3BubblesData = [];
+        
+        // Clear D3 radial data
+        this.d3RadialSvg = null;
+        this.d3RadialContainer = null;
         
         // Stop D3 simulation and brightness decay
         if (this.d3Simulation) {
@@ -3274,7 +5486,6 @@ class MQTTVisualizer {
         // Clear old network data structures (legacy)
         if (this.networkNodes) this.networkNodes.clear();
         if (this.networkTopics) this.networkTopics.clear();
-        if (this.networkMessages) this.networkMessages.clear();
         this.networkPulses = [];
         this.networkSvg = null;
         this.brokerNode = null;
@@ -3703,8 +5914,8 @@ class MQTTVisualizer {
                     this.domElements.frameRate.textContent = fps;
                 }
                 
-                // Count active message cards
-                const activeCards = document.querySelectorAll('.message-bubble').length;
+                // Use unified element tracker for accurate count
+                const activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
                 if (this.domElements.activeCards) {
                     this.domElements.activeCards.textContent = activeCards;
                 }
