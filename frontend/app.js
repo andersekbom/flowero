@@ -1866,64 +1866,88 @@ class ClustersAnimation {
         };
     }
 
-    // Process incoming message and update clusters
+    // Process incoming message and create individual message circles (like radial burst)
     processMessage(messageData, customerColor, topicColor) {
         console.log('ClustersAnimation processMessage called with:', { messageData, customerColor, topicColor });
 
         const customer = this.extractCustomerFromTopic(messageData.topic);
         const deviceId = this.extractDeviceFromTopic(messageData.topic);
-        const nodeId = `${customer}-${deviceId}`;
 
-        console.log('Extracted customer:', customer, 'deviceId:', deviceId, 'nodeId:', nodeId);
+        console.log('Creating message circle for customer:', customer, 'deviceId:', deviceId);
 
-        // Find or create node
-        let node = this.nodes.find(n => n.id === nodeId);
-        console.log('Found existing node:', node);
+        // Ensure cluster exists for this customer
+        this.ensureClusterExists(customer, customerColor);
 
-        if (!node) {
-            // Create new node
-            const radius = this.calculateNodeRadius(1);
-            node = {
-                id: nodeId,
-                customer: customer,
-                device: deviceId,
-                cluster: customer,
-                radius: radius,
-                color: customerColor,
-                messageCount: 1,
-                lastActivity: Date.now(),
-                // Random initial position around screen center
-                x: (this.screenCenterX || 0) + (Math.random() - 0.5) * 200,
-                y: (this.screenCenterY || 0) + (Math.random() - 0.5) * 200,
-                vx: 0,
-                vy: 0
-            };
-
-            console.log('Creating new cluster node:', node);
-
-            this.nodes.push(node);
-            this.ensureClusterExists(customer, customerColor);
-
-            console.log('Total nodes after creation:', this.nodes.length);
-
-            // Limit total nodes
-            if (this.nodes.length > this.options.maxNodes) {
-                this.removeOldestNode();
-            }
-        } else {
-            // Update existing node
-            node.messageCount++;
-            node.lastActivity = Date.now();
-            node.radius = this.calculateNodeRadius(node.messageCount);
+        // Get cluster target position
+        const cluster = this.clusters.get(customer);
+        if (!cluster) {
+            console.warn('Cluster not found for customer:', customer);
+            return null;
         }
 
-        // Update cluster info
-        this.updateCluster(customer, customerColor);
+        // Create individual message circle (like radial mode)
+        const messageId = `${customer}-${deviceId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Calculate position within cluster area (small random offset from cluster center)
+        const offsetRadius = 40; // Small radius around cluster center
+        const angle = Math.random() * 2 * Math.PI;
+        const distance = Math.random() * offsetRadius;
+
+        const messageNode = {
+            id: messageId,
+            customer: customer,
+            device: deviceId,
+            cluster: customer,
+            radius: 32, // Fixed radius for individual message circles
+            color: customerColor,
+            messageData: messageData,
+            createdAt: Date.now(),
+            // Position near cluster center with small random offset
+            x: cluster.targetX + Math.cos(angle) * distance,
+            y: cluster.targetY + Math.sin(angle) * distance,
+            vx: 0,
+            vy: 0
+        };
+
+        console.log('Creating message circle node:', messageNode);
+
+        // Add to nodes array for simulation
+        this.nodes.push(messageNode);
+
+        // Schedule removal after timeout (like radial burst mode)
+        this.scheduleMessageRemoval(messageNode);
 
         // Update simulation
         this.updateSimulation();
 
-        return node;
+        return messageNode;
+    }
+
+    // Schedule removal of message circle after timeout with fade out
+    scheduleMessageRemoval(messageNode) {
+        const displayTime = 10000; // 10 seconds display time
+        const fadeTime = 3000; // 3 seconds fade time
+
+        // Start fade after display time
+        setTimeout(() => {
+            // Find the DOM element and start fading
+            const nodeElement = this.nodeGroups.select(`[data-node-id="${messageNode.id}"]`);
+            if (nodeElement.node()) {
+                nodeElement.transition()
+                    .duration(fadeTime)
+                    .style('opacity', 0)
+                    .on('end', () => {
+                        // Remove from nodes array after fade completes
+                        const nodeIndex = this.nodes.findIndex(n => n.id === messageNode.id);
+                        if (nodeIndex !== -1) {
+                            console.log('Removing faded message circle:', messageNode.id);
+                            this.nodes.splice(nodeIndex, 1);
+                            // Update simulation
+                            this.updateSimulation();
+                        }
+                    });
+            }
+        }, displayTime);
     }
 
     // Calculate node radius based on message count
@@ -2018,6 +2042,7 @@ class ClustersAnimation {
         const nodeEnter = nodeSelection.enter()
             .append('g')
             .attr('class', 'cluster-node')
+            .attr('data-node-id', d => d.id)
             .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`)
             .style('opacity', 0);
 
@@ -3008,8 +3033,8 @@ class MQTTVisualizer {
         this.initialize();
 
         // Set initial visualization mode using ModeSwitchingManager
-        // Default to radial mode (active mode in HTML)
-        this.modeSwitchingManager.switchMode('radial');
+        // Default to clusters mode
+        this.modeSwitchingManager.switchMode('clusters');
 
         // Start frame rate monitoring
         this.startFrameRateMonitoring();
