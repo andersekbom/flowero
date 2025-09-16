@@ -393,7 +393,7 @@ class LinearAnimation {
         
         // Default options
         this.options = {
-            duration: 15000,
+            duration: 11250, // Reduced by 25% for increased acceleration (was 15000)
             margin: 100,
             elementSize: { width: 50, height: 50 }, // For positioning calculations
             ...options
@@ -2860,7 +2860,7 @@ class ModeSwitchingManager {
         // Start brightness decay with improved minimum (0.3 instead of 0.05)
         this.visualizer.brightnessInterval = setInterval(() => {
             if (this.visualizer.visualizationMode === 'network' && this.visualizer.networkAnimation) {
-                this.visualizer.networkAnimation.applyDecayImproved(0.995); // 25% slower decay (was 0.99)
+                this.visualizer.networkAnimation.applyDecayImproved(0.9935); // 30% faster decay than before
             }
         }, 100); // 10x per second for smoother decay
     }
@@ -3033,8 +3033,8 @@ class MQTTVisualizer {
         this.initialize();
 
         // Set initial visualization mode using ModeSwitchingManager
-        // Default to clusters mode
-        this.modeSwitchingManager.switchMode('clusters');
+        // Default to radial mode
+        this.modeSwitchingManager.switchMode('radial');
 
         // Start frame rate monitoring
         this.startFrameRateMonitoring();
@@ -5915,7 +5915,7 @@ class MQTTVisualizer {
             this.bubbleDirection, 
             this.layoutCalculator,
             {
-                duration: 15000, // 15 seconds like original
+                duration: 11250, // 25% faster acceleration (was 15000)
                 margin: 100,
                 elementSize: { width: 50, height: 50 }
             }
@@ -6056,7 +6056,7 @@ class MQTTVisualizer {
         if (!mode) {
             // If no mode provided, get from current active button
             const activeBtn = document.querySelector('.viz-icon-btn.active, .viz-mode-btn.active');
-            mode = activeBtn ? activeBtn.dataset.mode : 'bubbles';
+            mode = activeBtn ? activeBtn.dataset.mode : 'radial';
         }
 
         // Use the unified mode switching manager for clean transitions
