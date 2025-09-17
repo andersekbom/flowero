@@ -1,21 +1,31 @@
 /**
  * MQTT Message Visualizer Frontend
- * 
+ *
  * A high-performance real-time MQTT message visualizer with multiple themes and visualization modes.
  * Features WebSocket-based real-time updates and animated message visualizations.
- * 
+ *
  * Performance optimizations:
  * - DOM element caching for reduced queries
  * - Efficient animation using requestAnimationFrame and transforms
  * - Throttled message rate calculation
  * - DocumentFragment usage for batch DOM updates
- * 
+ *
  * @class MQTTVisualizer
  */
 
-/**
- * Reusable Circle Renderer for consistent styling across all visualization modes
- */
+// Import modular components
+import EventEmitter from './src/utils/EventEmitter.js';
+import MQTTConnectionManager from './src/mqtt/MQTTConnectionManager.js';
+import DOMManager from './src/ui/DOMManager.js';
+import SidebarController from './src/ui/SidebarController.js';
+import ThemeManager from './src/ui/ThemeManager.js';
+import ModalController from './src/ui/ModalController.js';
+import StatsPanel from './src/ui/StatsPanel.js';
+import ColorLegend from './src/ui/ColorLegend.js';
+import { BaseVisualization, CircleRenderer } from './src/visualization/BaseVisualization.js';
+import BubbleAnimation from './src/visualization/BubbleAnimation.js';
+import NetworkGraph from './src/visualization/NetworkGraph.js';
+
 /**
  * Unified Container System - Single SVG container for all visualization modes
  */
@@ -270,119 +280,9 @@ class UnifiedElementSystem {
     }
 }
 
-class CircleRenderer {
-    static createCircleElement(color, deviceId, options = {}) {
-        const {
-            size = 50,
-            showLabel = true,
-            className = 'circle-element'
-        } = options;
-        
-        // Create main container
-        const element = document.createElement('div');
-        element.className = className;
-        
-        // Create structure: circle + optional label below
-        element.innerHTML = `
-            <div class="circle"></div>
-            ${showLabel ? `<div class="circle-label"><div class="device-id">${deviceId}</div></div>` : ''}
-        `;
-        
-        // Style the main container
-        Object.assign(element.style, {
-            position: 'absolute',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
-            transition: 'none',
-            // Override any inherited styles
-            padding: '0',
-            borderRadius: '0',
-            boxShadow: 'none',
-            border: 'none',
-            background: 'transparent',
-            maxWidth: 'none',
-            minWidth: 'none'
-        });
-        
-        // Style the circle with consistent appearance
-        const circle = element.querySelector('.circle');
-        Object.assign(circle.style, {
-            background: color,
-            border: '2px solid #fff',
-            borderRadius: '50%',
-            width: `${size}px`,
-            height: `${size}px`,
-            boxShadow: 'none',
-            outline: 'none',
-            filter: 'none'
-        });
-        
-        // Style the label if present
-        if (showLabel) {
-            const label = element.querySelector('.circle-label');
-            Object.assign(label.style, {
-                marginTop: '15px', // Use network mode spacing (radius + 15px)
-                textAlign: 'center',
-                fontSize: '12px', // Use network mode font size
-                fontWeight: 'bold', // Use network mode font weight
-                fontFamily: 'Arial, sans-serif',
-                color: 'white',
-                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-                lineHeight: '1.2'
-            });
-        }
-        
-        return element;
-    }
+// Removed: CircleRenderer class - now imported from BaseVisualization module
     
-    static createSVGCircle(container, color, deviceId, x, y, options = {}) {
-        const {
-            size = 50,
-            showLabel = true,
-            networkMode = false
-        } = options;
-        
-        // Create SVG group
-        const group = container.append('g')
-            .attr('class', 'svg-circle-group')
-            .attr('transform', `translate(${x}, ${y})`);
-        
-        // Create circle
-        group.append('circle')
-            .attr('r', size / 2)
-            .attr('cx', 0)
-            .attr('cy', 0)
-            .attr('fill', color)
-            .attr('stroke', '#fff')
-            .attr('stroke-width', 2)
-            .attr('filter', 'none');
-        
-        // Add label if requested
-        if (showLabel) {
-            // Use network mode styling as the default (consistent across all modes)
-            const fontSize = '12px';
-            const fontWeight = 'bold';
-            const labelOffset = 15; // radius + offset
-
-            group.append('text')
-                .attr('text-anchor', 'middle')
-                .attr('x', 0)
-                .attr('y', (size / 2) + labelOffset)
-                .attr('fill', 'white')
-                .attr('font-size', fontSize)
-                .attr('font-weight', fontWeight)
-                .attr('font-family', 'Arial, sans-serif')
-                .attr('filter', 'url(#textShadow)')
-                .text(deviceId);
-        }
-        
-        return group;
-    }
-}
+// Removed: createSVGCircle method - now available in imported CircleRenderer
 
 // Phase 2: Animation Engine - Reusable Movement Patterns
 class LinearAnimation {
@@ -1076,656 +976,6 @@ class LayoutCalculator {
     }
 }
 
-/**
- * NetworkAnimation - Unified force-directed graph animation for network mode
- */
-class NetworkAnimation {
-    constructor(containerGroup, layoutCalculator, elementSystem, options = {}) {
-        this.containerGroup = containerGroup;
-        this.layoutCalculator = layoutCalculator;
-        this.elementSystem = elementSystem;
-
-        // Default options - tuned for minimal jitter with stable positioning
-        this.options = {
-            velocityDecay: 0.8,       // Increased damping to reduce oscillations
-            alphaDecay: 0.01,         // Slower cooling for more stable settling
-            alphaMin: 0.001,          // Lower minimum for smoother final state
-            linkDistance: 250,
-            linkStrength: 0.3,        // Stronger links for more definitive positioning
-            chargeStrength: -800,     // Increased repulsion to prevent overlapping
-            chargeDistanceMax: 400,   // Increased range for better separation
-            centerStrength: 0.01,     // Minimal centering to avoid force conflicts
-            collisionRadius: 50,      // Larger collision radius for more separation
-            collisionStrength: 0.7,   // Stronger collisions to maintain boundaries
-            boundaryPadding: 30,
-            ...options
-        };
-
-        // Network state
-        this.nodes = [];
-        this.links = [];
-        this.simulation = null;
-        this.nodeGroups = null;
-        this.linkGroups = null;
-
-        // Node tracking
-        this.brokerNode = null;
-        this.customerNodes = new Map();
-        this.topicNodes = new Map();
-    }
-
-    // Calculate fixed distances
-    calculateDistance(linkType = 'broker-customer') {
-        if (linkType === 'customer-topic') {
-            // Keep customer-topic distances short and fixed
-            return 80;
-        }
-        // Fixed distance for broker-customer links
-        return this.options.linkDistance;
-    }
-
-    // Update all link distances with fixed values
-    updateLinkDistances() {
-        if (!this.simulation) return;
-
-        this.links.forEach(link => {
-            if (link.source === 'broker' || (link.source && link.source.id === 'broker')) {
-                // Broker to customer link - fixed distance
-                link.distance = this.calculateDistance('broker-customer');
-            } else {
-                // Customer to topic link - fixed distance
-                link.distance = this.calculateDistance('customer-topic');
-            }
-        });
-
-        // Update the simulation with new distances
-        this.simulation.force('link')
-            .distance(d => {
-                if (d.type === 'customer-topic') {
-                    return this.calculateDistance('customer-topic');
-                }
-                // Fixed distance for broker-customer links
-                return this.calculateDistance('broker-customer');
-            });
-
-        // Restart simulation to apply changes
-        this.simulation.alpha(0.3).restart();
-    }
-
-    // Initialize the network simulation
-    initialize() {
-        console.log('NetworkAnimation: Initializing force simulation');
-
-        // Create broker node at center
-        this.createBrokerNode();
-
-        // Create D3 force simulation
-        this.simulation = d3.forceSimulation(this.nodes)
-            .velocityDecay(this.options.velocityDecay)
-            .alphaDecay(this.options.alphaDecay)
-            .alphaMin(this.options.alphaMin)
-            .force('link', d3.forceLink(this.links)
-                .id(d => d.id)
-                .distance(d => {
-                    // Use fixed distances for all links
-                    if (d.type === 'customer-topic') {
-                        return this.calculateDistance('customer-topic');
-                    }
-                    // Fixed distance for broker-customer links
-                    return this.calculateDistance('broker-customer');
-                })
-                .strength(d => {
-                    // Stronger force for customer-topic links to keep them together
-                    if (d.type === 'customer-topic') return 0.8;
-                    // Normal strength for broker-customer links
-                    return this.options.linkStrength;
-                })
-            )
-            .force('charge', d3.forceManyBody()
-                .strength(this.options.chargeStrength)
-                .distanceMax(this.options.chargeDistanceMax)
-            )
-            .force('center', d3.forceCenter()
-                .strength(this.options.centerStrength)
-            )
-            .force('collision', d3.forceCollide()
-                .radius(d => {
-                    // Use actual node radius + padding for collision detection
-                    const baseRadius = d.radius || this.options.collisionRadius;
-                    // Add much larger padding around broker node to prevent overlap
-                    const padding = d.type === 'broker' ? 40 : 8;
-                    return baseRadius + padding;
-                })
-                .strength(this.options.collisionStrength)
-            )
-            .force('brokerRepel', (alpha) => {
-                // Custom force to strongly repel nodes from broker
-                if (!this.brokerNode) return;
-
-                this.nodes.forEach(node => {
-                    if (node.type === 'broker') return;
-
-                    // Skip if node positions are not yet defined
-                    if (typeof node.x !== 'number' || typeof node.y !== 'number') return;
-                    if (typeof this.brokerNode.x !== 'number' || typeof this.brokerNode.y !== 'number') return;
-
-                    const dx = node.x - this.brokerNode.x;
-                    const dy = node.y - this.brokerNode.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    // Different minimum distances for different node types
-                    const minDistance = node.type === 'customer' ? 300 : 120;
-
-                    // Skip if distance calculation failed
-                    if (!isFinite(distance) || distance === 0) return;
-
-                    if (distance < minDistance) {
-                        const force = (minDistance - distance) / distance * alpha * 0.5;
-                        node.vx += dx * force;
-                        node.vy += dy * force;
-                    }
-                });
-            })
-            .on('tick', () => this.onTick());
-
-        // Apply boundary force and set center position
-        this.updateDimensions();
-
-        // Create SVG groups for links and nodes
-        this.linkGroups = this.containerGroup.append('g').attr('class', 'links');
-        this.nodeGroups = this.containerGroup.append('g').attr('class', 'nodes');
-
-        console.log('NetworkAnimation: Force simulation initialized');
-    }
-
-    // Update dimensions and boundary forces
-    updateDimensions() {
-        if (!this.simulation) return;
-
-        // Use actual current window center (responsive to sidebar changes)
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-        const dimensions = {
-            centerX: windowWidth / 2,
-            centerY: windowHeight / 2,
-            width: windowWidth,
-            height: windowHeight
-        };
-
-        console.log('NetworkAnimation: Updated center dimensions:', dimensions);
-
-        // Update center force
-        this.simulation.force('center', d3.forceCenter(
-            dimensions.centerX,
-            dimensions.centerY
-        ).strength(this.options.centerStrength));
-
-        // Update boundary force
-        this.simulation.force('boundary', this.createBoundaryForce(
-            dimensions.width,
-            dimensions.height
-        ));
-
-        // Update broker node position to new center
-        if (this.brokerNode) {
-            this.brokerNode.fx = dimensions.centerX;
-            this.brokerNode.fy = dimensions.centerY;
-            this.brokerNode.x = dimensions.centerX;
-            this.brokerNode.y = dimensions.centerY;
-        }
-
-        // Restart simulation
-        this.simulation.alpha(0.3).restart();
-    }
-
-    // Create boundary force to keep nodes within container
-    createBoundaryForce(width, height) {
-        return (alpha) => {
-            this.nodes.forEach(node => {
-                if (node.type === 'broker') return; // Skip fixed broker
-
-                const nodeRadius = node.radius || this.options.collisionRadius;
-                const padding = this.options.boundaryPadding;
-
-                // Apply boundary constraints with stronger force
-                if (node.x < nodeRadius + padding) {
-                    node.vx += (nodeRadius + padding - node.x) * alpha * 0.3;
-                    node.x = Math.max(node.x, nodeRadius + padding); // Hard clamp
-                }
-                if (node.x > width - nodeRadius - padding) {
-                    node.vx += (width - nodeRadius - padding - node.x) * alpha * 0.3;
-                    node.x = Math.min(node.x, width - nodeRadius - padding); // Hard clamp
-                }
-                if (node.y < nodeRadius + padding) {
-                    node.vy += (nodeRadius + padding - node.y) * alpha * 0.3;
-                    node.y = Math.max(node.y, nodeRadius + padding); // Hard clamp
-                }
-                if (node.y > height - nodeRadius - padding) {
-                    node.vy += (height - nodeRadius - padding - node.y) * alpha * 0.3;
-                    node.y = Math.min(node.y, height - nodeRadius - padding); // Hard clamp
-                }
-            });
-        };
-    }
-
-    // Create central broker node
-    createBrokerNode() {
-        // Use actual window center for broker positioning
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-        const dimensions = {
-            centerX: windowWidth / 2,
-            centerY: windowHeight / 2
-        };
-
-        console.log('NetworkAnimation: Creating broker at:', dimensions.centerX, dimensions.centerY);
-
-        this.brokerNode = {
-            id: 'broker',
-            type: 'broker',
-            label: 'MQTT Broker',
-            radius: 60,
-            baseRadius: 60,
-            color: '#ff6b6b',
-            brightness: 1.0,
-            sizeScale: 1.0,
-            messageCount: 0,
-            x: dimensions.centerX, // Current position
-            y: dimensions.centerY, // Current position
-            fx: dimensions.centerX, // Fixed position
-            fy: dimensions.centerY
-        };
-
-        this.nodes.push(this.brokerNode);
-        return this.brokerNode;
-    }
-
-    // Add customer node
-    addCustomerNode(customer, color) {
-        if (this.customerNodes.has(customer)) {
-            return this.customerNodes.get(customer);
-        }
-
-        const brokerX = this.brokerNode ? (this.brokerNode.x || this.brokerNode.fx || 400) : 400;
-        const brokerY = this.brokerNode ? (this.brokerNode.y || this.brokerNode.fy || 300) : 300;
-
-        console.log('Creating customer node:', customer, 'at broker position:', brokerX, brokerY);
-
-        const customerNode = {
-            id: customer,
-            type: 'customer',
-            label: customer,
-            radius: 45,
-            baseRadius: 45,
-            color: color,
-            brightness: 1.0,
-            sizeScale: 1.0,
-            messageCount: 0,
-            lastActivity: Date.now(),
-            // Start at broker center position with fallback
-            x: brokerX,
-            y: brokerY
-        };
-
-        this.nodes.push(customerNode);
-        this.customerNodes.set(customer, customerNode);
-
-        // Track element with unified tracker
-        if (this.elementTracker) {
-            this.elementTracker.trackElement(customerNode, {
-                type: 'network-customer',
-                status: 'active',
-                createdAt: Date.now()
-            });
-        }
-
-        // Create link from broker to customer
-        this.links.push({
-            source: 'broker',
-            target: customer,
-            type: 'broker-customer'
-        });
-
-        return customerNode;
-    }
-
-    // Add topic node
-    addTopicNode(customer, topic, color) {
-        const deviceId = this.extractDeviceFromTopic(topic);
-        const topicId = `${customer}-${deviceId}`;
-
-        if (this.topicNodes.has(topicId)) {
-            const existingNode = this.topicNodes.get(topicId);
-            existingNode.lastActivity = Date.now();
-            existingNode.messageCount++;
-            // Reset brightness and size for new message activity
-            existingNode.brightness = 1.0;
-            existingNode.sizeScale = 1.0;
-            return existingNode;
-        }
-
-        // Get customer node to spawn topic near it
-        const customerNode = this.customerNodes.get(customer);
-
-        const brokerX = this.brokerNode ? (this.brokerNode.x || this.brokerNode.fx || 400) : 400;
-        const brokerY = this.brokerNode ? (this.brokerNode.y || this.brokerNode.fy || 300) : 300;
-
-        console.log('Creating topic node:', topicId, 'at broker position:', brokerX, brokerY);
-
-        const topicNode = {
-            id: topicId,
-            type: 'topic',
-            label: deviceId,
-            radius: 30,
-            baseRadius: 30,
-            color: color,
-            brightness: 1.0,
-            sizeScale: 1.0,
-            messageCount: 1,
-            lastActivity: Date.now(),
-            customer: customer,
-            device: deviceId,
-            // Start at broker center position with fallback
-            x: brokerX,
-            y: brokerY
-        };
-
-        this.nodes.push(topicNode);
-        this.topicNodes.set(topicId, topicNode);
-
-        // Track element with unified tracker
-        if (this.elementTracker) {
-            this.elementTracker.trackElement(topicNode, {
-                type: 'network-topic',
-                status: 'active',
-                createdAt: Date.now()
-            });
-        }
-
-        // Create link from customer to topic
-        this.links.push({
-            source: customer,
-            target: topicId,
-            type: 'customer-topic'
-        });
-
-        return topicNode;
-    }
-
-    // Extract device ID from topic
-    extractDeviceFromTopic(topic) {
-        const parts = topic.split('/');
-        return parts.length > 1 ? parts[1] : 'device';
-    }
-
-    // Process new message
-    processMessage(messageData, customerColor, topicColor) {
-        const customer = messageData.topic.split('/')[0] || 'unknown';
-
-        // Add/update customer node
-        const customerNode = this.addCustomerNode(customer, customerColor);
-        customerNode.lastActivity = Date.now();
-        customerNode.messageCount++;
-        // Reset brightness and size for new message activity
-        customerNode.brightness = 1.0;
-        customerNode.sizeScale = 1.0;
-
-        // Add/update topic node using topic-specific color
-        const topicNode = this.addTopicNode(customer, messageData.topic, topicColor || customerColor);
-
-        // Update simulation
-        this.updateSimulation();
-
-        // Update visual properties immediately for brightness/size changes
-        if (this.nodeGroups) {
-            this.nodeGroups.selectAll('circle')
-                .style('opacity', d => d.brightness)
-                .attr('r', d => d.radius * d.sizeScale);
-        }
-
-        return { customerNode, topicNode };
-    }
-
-    // Update D3 simulation
-    updateSimulation() {
-        if (!this.simulation) return;
-
-        // Update simulation with new data
-        this.simulation.nodes(this.nodes);
-        this.simulation.force('link').links(this.links);
-
-        // Restart simulation
-        this.simulation.alpha(0.3).restart();
-
-        // Update visuals
-        this.updateVisuals();
-    }
-
-    // Update SVG visuals
-    updateVisuals() {
-        if (!this.nodeGroups || !this.linkGroups) return;
-
-
-        // Update links
-        const linkSelection = this.linkGroups.selectAll('line')
-            .data(this.links);
-
-        linkSelection.enter()
-            .append('line')
-            .style('stroke', '#666')
-            .style('stroke-width', 2)
-            .style('stroke-opacity', 0.6);
-
-        linkSelection.exit().remove();
-
-        // Update nodes using UnifiedElementSystem with proper D3 data binding
-        const nodeSelection = this.nodeGroups.selectAll('g.svg-circle-group')
-            .data(this.nodes, d => d.id);
-
-        // Create nodes using proper D3 enter pattern with unified styling
-        const nodeEnter = nodeSelection.enter()
-            .append('g')
-            .attr('class', 'svg-circle-group')
-            .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`) // Set initial position
-            .style('cursor', 'pointer');
-
-        // Add circles with unified styling
-        nodeEnter.append('circle')
-            .attr('r', d => d.radius)
-            .attr('fill', d => d.color)
-            .attr('stroke', '#fff')
-            .attr('stroke-width', 2);
-
-        // Add labels with unified styling (network mode values)
-        nodeEnter.append('text')
-            .attr('text-anchor', 'middle')
-            .attr('y', d => d.radius + 15) // Network mode offset
-            .attr('fill', 'white')
-            .attr('font-size', '12px') // Network mode font size
-            .attr('font-weight', 'bold') // Network mode font weight
-            .attr('font-family', 'Arial, sans-serif')
-            .text(d => d.label);
-
-        // Remove exiting nodes
-        nodeSelection.exit().remove();
-    }
-
-    // Animation tick handler with position smoothing
-    onTick() {
-        if (!this.linkGroups || !this.nodeGroups) return;
-
-        // Apply adaptive position smoothing - less smoothing for large movements
-        this.nodes.forEach(node => {
-            if (node.prevX !== undefined && node.prevY !== undefined) {
-                // Calculate movement distance
-                const dx = node.x - node.prevX;
-                const dy = node.y - node.prevY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                // Adaptive smoothing: fast for large moves, heavy damping for micro-jitter
-                let baseSmoothingFactor;
-                if (distance > 10) {
-                    baseSmoothingFactor = 0.6;  // Fast for large repositioning
-                } else if (distance > 2) {
-                    baseSmoothingFactor = 0.3;  // Moderate for medium movements
-                } else {
-                    baseSmoothingFactor = 0.1;  // Heavy damping for micro-jitter
-                }
-
-                // Smooth interpolation between previous and current position
-                const newX = node.prevX + dx * baseSmoothingFactor;
-                const newY = node.prevY + dy * baseSmoothingFactor;
-
-                // Only update if movement is above a minimum threshold to prevent micro-updates
-                const minMovement = 0.1;
-                if (Math.abs(node.x - newX) > minMovement || Math.abs(node.y - newY) > minMovement) {
-                    node.x = newX;
-                    node.y = newY;
-                }
-            }
-            // Store previous position for next frame
-            node.prevX = node.x;
-            node.prevY = node.y;
-        });
-
-        // Update link positions
-        this.linkGroups.selectAll('line')
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-
-        // Update node positions using D3 data binding
-        this.nodeGroups.selectAll('g.svg-circle-group')
-            .attr('transform', d => `translate(${d.x}, ${d.y})`);
-    }
-
-    // Create pulse animation between nodes
-    createPulse(fromNodeId, toNodeId) {
-        const fromNode = this.nodes.find(n => n.id === fromNodeId);
-        const toNode = this.nodes.find(n => n.id === toNodeId);
-
-        if (!fromNode || !toNode || !this.containerGroup) return;
-
-        // Create pulse circle
-        const pulse = this.containerGroup.append('circle')
-            .attr('r', 5)
-            .attr('cx', fromNode.x)
-            .attr('cy', fromNode.y)
-            .style('fill', '#00ff00')
-            .style('opacity', 0.8);
-
-        // Animate pulse to target
-        pulse.transition()
-            .duration(800)
-            .attr('cx', toNode.x)
-            .attr('cy', toNode.y)
-            .style('opacity', 0)
-            .on('end', () => pulse.remove());
-    }
-
-    // Clean up old nodes - disabled for network mode (nodes only fade/shrink)
-    cleanupOldNodes(maxAge = 30000) {
-        // In network mode, nodes should persist and only become smaller/dimmer
-        // No cleanup - let decay system handle visibility through brightness/size
-
-        // However, if we ever do clean up nodes in the future, we should update distances
-        // this.updateLinkDistances();
-        return;
-    }
-
-    // Apply brightness decay
-    applyDecay(decayRate = 0.99) {
-        let updated = false;
-
-        this.nodes.forEach(node => {
-            if (node.type === 'broker') return; // Skip broker
-
-            // Apply brightness decay (fade to very dim but still visible)
-            if (node.brightness > 0.05) {
-                node.brightness *= decayRate;
-                updated = true;
-            }
-
-            // Apply size decay (shrink to very small but still visible)
-            if (node.sizeScale > 0.15) {
-                node.sizeScale *= decayRate;
-                updated = true;
-            }
-        });
-
-        if (updated && this.nodeGroups) {
-            // Update visual properties
-            this.nodeGroups.selectAll('circle')
-                .style('opacity', d => d.brightness)
-                .attr('r', d => d.radius * d.sizeScale);
-        }
-    }
-
-    // Apply brightness decay with grace period and smooth transitions
-    applyDecayImproved(decayRate = 0.99) {
-        const now = Date.now();
-        const gracePeriod = 3000; // 3 seconds grace period before decay starts
-        const smoothingFactor = 0.1; // For smooth interpolation
-        let updated = false;
-
-        this.nodes.forEach(node => {
-            if (node.type === 'broker') return; // Skip broker
-
-            // Check if grace period has passed since last activity
-            const timeSinceActivity = now - (node.lastActivity || now);
-            if (timeSinceActivity < gracePeriod) {
-                // Within grace period - maintain full brightness and size
-                if (node.brightness < 1.0) {
-                    node.brightness = Math.min(1.0, node.brightness + smoothingFactor);
-                    updated = true;
-                }
-                if (node.sizeScale < 1.0) {
-                    node.sizeScale = Math.min(1.0, node.sizeScale + smoothingFactor);
-                    updated = true;
-                }
-                return;
-            }
-
-            // Apply brightness decay (fade to 30% but still visible)
-            if (node.brightness > 0.3) {
-                const targetBrightness = Math.max(0.3, node.brightness * decayRate);
-                node.brightness = node.brightness - (node.brightness - targetBrightness) * smoothingFactor;
-                updated = true;
-            }
-
-            // Apply size decay (shrink to 33% but still visible)
-            if (node.sizeScale > 0.33) {
-                const targetSize = Math.max(0.33, node.sizeScale * decayRate);
-                node.sizeScale = node.sizeScale - (node.sizeScale - targetSize) * smoothingFactor;
-                updated = true;
-            }
-        });
-
-        if (updated && this.nodeGroups) {
-            // Update visual properties with smooth transitions
-            this.nodeGroups.selectAll('circle')
-                .style('opacity', d => d.brightness)
-                .attr('r', d => d.radius * d.sizeScale);
-        }
-    }
-
-    // Stop and cleanup
-    stop() {
-        if (this.simulation) {
-            this.simulation.stop();
-            this.simulation = null;
-        }
-
-        this.nodes = [];
-        this.links = [];
-        this.customerNodes.clear();
-        this.topicNodes.clear();
-        this.brokerNode = null;
-
-        console.log('NetworkAnimation: Stopped and cleaned up');
-    }
-}
 
 /**
  * ClustersAnimation - D3 Force-based clustered bubbles visualization
@@ -2705,11 +1955,7 @@ class ModeSwitchingManager {
         // Clear color legend and visualization state
         this.visualizer.resetVisualizationState();
 
-        // Stop NetworkAnimation if it exists
-        if (this.visualizer.networkAnimation) {
-            this.visualizer.networkAnimation.stop();
-            this.visualizer.networkAnimation = null;
-        }
+        // NetworkAnimation cleanup is now handled by NetworkGraph component
 
         // Stop ClustersAnimation if it exists
         if (this.visualizer.clustersAnimation) {
@@ -2728,23 +1974,8 @@ class ModeSwitchingManager {
 
     // Update button states to reflect new mode
     updateModeButtons(newMode) {
-        // Update collapsed sidebar icons
-        this.visualizer.domElements.vizIconButtons.forEach(btn => {
-            if (btn.dataset.mode === newMode) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-
-        // Update expanded sidebar buttons
-        this.visualizer.domElements.vizModeButtons.forEach(btn => {
-            if (btn.dataset.mode === newMode) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
+        // Use sidebar controller to update visualization buttons
+        this.visualizer.sidebarController.updateVisualizationButtons(newMode);
     }
 
     // Initialize the new visualization mode
@@ -2771,10 +2002,7 @@ class ModeSwitchingManager {
             this.visualizer.unifiedContainer.updateDimensions(this.visualizer.layoutCalculator);
         }
 
-        // Update NetworkAnimation dimensions for network mode
-        if (this.visualizer.networkAnimation) {
-            this.visualizer.networkAnimation.updateDimensions();
-        }
+        // Network mode dimensions are now handled by NetworkGraph component
     }
 
     // Initialize unified container modes (bubbles, radial, starfield)
@@ -2790,33 +2018,9 @@ class ModeSwitchingManager {
         console.log(`ModeSwitchingManager: Unified mode ${mode} initialized`);
     }
 
-    // Initialize network mode using NetworkAnimation with proper brightness decay
+    // Network mode initialization is now handled by NetworkGraph component
     initializeNetworkMode() {
-        console.log('ModeSwitchingManager: Initializing network mode with NetworkAnimation');
-
-        // Initialize unified container for network mode
-        if (!this.visualizer.unifiedContainer) {
-            this.visualizer.unifiedContainer = new UnifiedContainer(this.visualizer.domElements.messageFlow);
-        }
-
-        // Initialize container with layout calculator
-        this.visualizer.unifiedContainer.initialize(this.visualizer.layoutCalculator);
-
-        // Create NetworkAnimation instance
-        const containerGroup = this.visualizer.unifiedContainer.getContainer();
-        this.visualizer.networkAnimation = new NetworkAnimation(
-            containerGroup,
-            this.visualizer.layoutCalculator,
-            this.visualizer.elementSystem
-        );
-
-        // Initialize the network simulation
-        this.visualizer.networkAnimation.initialize();
-
-        // Start brightness decay with improved minimum brightness
-        this.startNetworkBrightnessDecay();
-
-        console.log('ModeSwitchingManager: Network mode initialized');
+        console.log('ModeSwitchingManager: Network mode initialization delegated to NetworkGraph component');
     }
 
     // Initialize clusters mode using ClustersAnimation
@@ -2850,19 +2054,10 @@ class ModeSwitchingManager {
         console.log('ModeSwitchingManager: Clusters mode initialized successfully');
     }
 
-    // Start brightness decay for network mode with improved minimum brightness
+    // Network brightness decay is now handled by NetworkGraph component
     startNetworkBrightnessDecay() {
-        // Clear any existing interval
-        if (this.visualizer.brightnessInterval) {
-            clearInterval(this.visualizer.brightnessInterval);
-        }
-
-        // Start brightness decay with improved minimum (0.3 instead of 0.05)
-        this.visualizer.brightnessInterval = setInterval(() => {
-            if (this.visualizer.visualizationMode === 'network' && this.visualizer.networkAnimation) {
-                this.visualizer.networkAnimation.applyDecayImproved(0.9935); // 30% faster decay than before
-            }
-        }, 100); // 10x per second for smoother decay
+        // Brightness decay is now handled internally by NetworkGraph component
+        console.log('ModeSwitchingManager: NetworkGraph handles its own brightness decay');
     }
 
     // Complete the mode transition
@@ -2960,13 +2155,17 @@ class MQTTVisualizer {
 
         // Layout management system
         this.layoutCalculator = null; // Initialized after DOM elements
-        
-        // Connection state
-        this.websocket = null;
+
+        // Event system for inter-component communication
+        this.eventEmitter = new EventEmitter();
+
+        // MQTT Connection Management (will be initialized after DOM elements are cached)
+        this.mqttConnectionManager = null;
+
+        // Legacy connection state compatibility
         this.isConnected = false;
         
         // Message tracking
-        //this.messageCount = 0;
         this.messageRate = 0;
         this.messageHistory = [];
         
@@ -3004,8 +2203,7 @@ class MQTTVisualizer {
         this.visualizationMode = null; // Will be set by ModeSwitchingManager
         this.currentAngle = 0;
         
-        // Direction control for bubbles mode
-        this.bubbleDirection = { x: 0, y: 1 }; // Default: downward
+        // Legacy bubble direction removed - now handled by BubbleAnimation component
         
         // D3.js Network graph state
         this.d3Nodes = []; // Array of all nodes for D3
@@ -3020,21 +2218,77 @@ class MQTTVisualizer {
         this.messageNodes = new Map(); // message -> node reference
         this.brokerNode = null;
         
-        // Performance optimization: cache DOM elements
-        this.domElements = this.cacheDOMElements();
-        
+        // Initialize DOM Manager
+        console.log('MQTTVisualizer: Initializing DOMManager...');
+        this.domManager = new DOMManager().initialize();
+        this.domElements = this.domManager.getAll();
+        console.log('MQTTVisualizer: DOMManager initialized, elements:', Object.keys(this.domElements));
+
+        // Initialize MQTT Connection Manager
+        console.log('MQTTVisualizer: Initializing MQTT Connection Manager...');
+        this.mqttConnectionManager = new MQTTConnectionManager(this.domElements, this.eventEmitter);
+        console.log('MQTTVisualizer: MQTT Connection Manager created:', this.mqttConnectionManager);
+        this.setupMQTTEventListeners();
+        console.log('MQTTVisualizer: MQTT event listeners setup complete');
+
+        // Initialize Sidebar Controller
+        console.log('MQTTVisualizer: Initializing SidebarController...');
+        try {
+            this.sidebarController = new SidebarController(this.domManager, this.eventEmitter).initialize();
+            console.log('MQTTVisualizer: SidebarController initialized successfully');
+            this.setupSidebarEventListeners();
+        } catch (error) {
+            console.error('MQTTVisualizer: Failed to initialize SidebarController:', error);
+        }
+
+        // Initialize Theme Manager
+        this.themeManager = new ThemeManager(this.domManager, this.eventEmitter).initialize();
+        this.setupThemeEventListeners();
+
+        // Initialize Modal Controller
+        this.modalController = new ModalController(this.domManager, this.eventEmitter).initialize();
+        this.modalController.setColorProvider((topic) => this.getTopicColor(topic));
+        this.setupModalEventListeners();
+
+        // Initialize Stats Panel
+        this.statsPanel = new StatsPanel(this.domManager, this.eventEmitter).initialize();
+        this.setupStatsEventListeners();
+
+        // Initialize Base Visualization
+        this.baseVisualization = new BaseVisualization(this.domManager, this.eventEmitter, this.themeManager).initialize();
+        this.setupVisualizationEventListeners();
+
+        // Initialize Color Legend (shared by all visualizations)
+        this.colorLegend = new ColorLegend(this.domManager, this.themeManager).initialize();
+        this.setupColorLegendEventListeners();
+
+        // Initialize Bubble Animation System
+        console.log('📝 Creating BubbleAnimation instance...');
+        this.bubbleAnimation = new BubbleAnimation(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('📝 BubbleAnimation created:', this.bubbleAnimation);
+        console.log('📝 Calling initialize()...');
+        this.bubbleAnimation.initialize();
+        console.log('📝 BubbleAnimation initialization complete');
+
+        // Initialize Network Graph System
+        console.log('🌐 Creating NetworkGraph instance...');
+        this.networkGraph = new NetworkGraph(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🌐 NetworkGraph created:', this.networkGraph);
+        console.log('🌐 Calling initialize()...');
+        this.networkGraph.initialize();
+        console.log('🌐 NetworkGraph initialization complete');
+
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
-        
+
         // Smart cleanup system for element lifecycle management
         this.cleanupManager = new CleanupManager(this.domElements.messageFlow, this.layoutCalculator);
         
         // Initialize all systems
         this.initialize();
 
-        // Set initial visualization mode using ModeSwitchingManager
-        // Default to radial mode
-        this.modeSwitchingManager.switchMode('radial');
+        // Set bubbles as default visualization mode
+        this.switchVisualization('bubbles');
 
         // Start frame rate monitoring
         this.startFrameRateMonitoring();
@@ -3049,68 +2303,10 @@ class MQTTVisualizer {
         this.SCREEN_CENTER_Y = this.SCREEN_HEIGHT / 2;
     }
 
-    cacheDOMElements() {
-        return {
-            // Connection elements
-            host: document.getElementById('host'),
-            port: document.getElementById('port'),
-            username: document.getElementById('username'),
-            password: document.getElementById('password'),
-            connectBtn: document.getElementById('connectBtn'),
-            subscribeBtn: document.getElementById('subscribeBtn'),
-            topic: document.getElementById('topic'),
-            
-            // Status elements
-            status: document.getElementById('status'),
-            connectionStatus: document.getElementById('connectionStatus'),
-            liveIndicator: document.getElementById('liveIndicator'),
-            brokerUrlDisplay: document.getElementById('brokerUrlDisplay'),
-            brokerUrl: document.getElementById('brokerUrl'),
-            
-            // Stats elements
-            totalMessages: document.getElementById('totalMessages'),
-            messageRate: document.getElementById('messageRate'),
-            activeTopics: document.getElementById('activeTopics'),
-            frameRate: document.getElementById('frameRate'),
-            activeCards: document.getElementById('activeCards'),
-            
-            // Visualization elements
-            messageFlow: document.getElementById('messageFlow'),
-            
-            // Visualization mode buttons
-            vizIconButtons: document.querySelectorAll('.viz-icon-btn'),
-            vizModeButtons: document.querySelectorAll('.viz-mode-btn'),
-            
-            // Modal elements
-            modal: document.getElementById('messageModal'),
-            modalClose: document.getElementById('modalClose'),
-            modalCustomer: document.getElementById('modalCustomer'),
-            modalTopic: document.getElementById('modalTopic'),
-            modalTimestamp: document.getElementById('modalTimestamp'),
-            modalPayload: document.getElementById('modalPayload'),
-            modalQos: document.getElementById('modalQos'),
-            modalRetain: document.getElementById('modalRetain'),
-            
-            // Legend elements
-            colorLegend: document.getElementById('colorLegend'),
-            legendItems: document.getElementById('legendItems'),
-            
-            // Stats panel
-            statsPanel: document.getElementById('statsPanel'),
-            
-            // Theme elements
-            themeMode: document.getElementById('themeMode'),
-            sidebar: document.getElementById('sidebar')
-        };
-    }
 
     initialize() {
         this.initializeEventListeners();
-        this.initializeSidebarToggle();
         this.initializeVisualizationButtons();
-        this.initializeTheme();
-        this.initializeModal();
-        this.startStatsUpdate();
     }
 
     initializeEventListeners() {
@@ -3126,85 +2322,14 @@ class MQTTVisualizer {
             if (e.key === 'Enter' || e.keyCode === 13) this.subscribeToTopic();
         }, passiveOption);
         
-        // Cursor key handlers for controlling bubble direction with better browser compatibility
-        document.addEventListener('keydown', (e) => {
-            if (this.visualizationMode === 'bubbles') {
-                const key = e.key || e.which || e.keyCode;
-                let handled = false;
-                
-                switch(key) {
-                    case 'ArrowUp':
-                    case 'Up': // IE fallback
-                    case 38: // keyCode fallback
-                        this.bubbleDirection = { x: 0, y: -1 };
-                        handled = true;
-                        break;
-                    case 'ArrowDown':
-                    case 'Down': // IE fallback
-                    case 40: // keyCode fallback
-                        this.bubbleDirection = { x: 0, y: 1 };
-                        handled = true;
-                        break;
-                    case 'ArrowLeft':
-                    case 'Left': // IE fallback
-                    case 37: // keyCode fallback
-                        this.bubbleDirection = { x: -1, y: 0 };
-                        handled = true;
-                        break;
-                    case 'ArrowRight':
-                    case 'Right': // IE fallback
-                    case 39: // keyCode fallback
-                        this.bubbleDirection = { x: 1, y: 0 };
-                        handled = true;
-                        break;
-                }
-                
-                if (handled) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-            }
-        }, passiveOption);
+        // Legacy arrow key handlers removed - bubble direction now handled by D3 BubbleAnimation component
     }
 
-    initializeSidebarToggle() {
-        const toggleButton = document.getElementById('sidebarToggle');
-
-        if (toggleButton && this.domElements.sidebar) {
-            toggleButton.addEventListener('click', () => {
-                this.domElements.sidebar.classList.toggle('collapsed');
-
-                // Update unified container position when sidebar state changes
-                if (this.unifiedContainer && this.layoutCalculator) {
-                    // Small delay to allow CSS transition to complete
-                    setTimeout(() => {
-                        this.unifiedContainer.updateDimensions(this.layoutCalculator);
-
-                        // Also update NetworkAnimation dimensions if in network mode
-                        if (this.networkAnimation) {
-                            this.networkAnimation.updateDimensions();
-                        }
-                    }, 50);
-                }
-            });
-        }
-    }
     
     initializeVisualizationButtons() {
-        // Add click handlers for collapsed sidebar visualization icons
-        this.domElements.vizIconButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const mode = btn.dataset.mode;
-                this.switchVisualization(mode);
-            });
-        });
-        
-        // Add click handlers for expanded sidebar visualization buttons
-        this.domElements.vizModeButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const mode = btn.dataset.mode;
-                this.switchVisualization(mode);
-            });
+        // Setup visualization button handlers using sidebar controller
+        this.sidebarController.setupVisualizationButtons((mode) => {
+            this.switchVisualization(mode);
         });
     }
 
@@ -3254,175 +2379,273 @@ class MQTTVisualizer {
         }
     }
 
-    initializeModal() {
-        const passiveOption = this.supportsPassiveListeners ? { passive: true } : false;
-        
-        // Close modal when clicking the X button
-        this.domElements.modalClose.addEventListener('click', () => {
-            this.closeModal();
-        }, passiveOption);
-        
-        // Close modal when clicking outside the modal content
-        this.domElements.modal.addEventListener('click', (e) => {
-            if (e.target === this.domElements.modal) {
-                this.closeModal();
-            }
-        }, passiveOption);
-        
-        // Close modal when pressing Escape key with browser compatibility
-        document.addEventListener('keydown', (e) => {
-            const key = e.key || e.which || e.keyCode;
-            if ((key === 'Escape' || key === 'Esc' || key === 27) && 
-                this.domElements.modal.style.display === 'block') {
-                this.closeModal();
-            }
-        }, this.supportsPassiveListeners ? { passive: false } : false);
-    }
-
     showMessageModal(messageData) {
-        const modalContent = this.domElements.modal.querySelector('.modal-content');
-        const customer = this.extractCustomerFromTopic(messageData.topic);
-        const color = this.getTopicColor(messageData.topic);
-        
-        // Style modal to match the card (solid colors, no transparency)
-        modalContent.style.background = `linear-gradient(135deg, ${color}, ${color}E6)`;
-        modalContent.style.border = `2px solid ${color}`;
-        
-        // Populate modal fields with all message details using cached elements
-        this.domElements.modalCustomer.textContent = customer.toUpperCase();
-        this.domElements.modalTopic.textContent = messageData.topic;
-        this.domElements.modalTimestamp.textContent = new Date(messageData.timestamp * 1000).toLocaleString();
-        this.domElements.modalPayload.textContent = messageData.payload;
-        this.domElements.modalQos.textContent = messageData.qos || '0';
-        this.domElements.modalRetain.textContent = messageData.retain ? 'Yes' : 'No';
-        
-        // Show all fields (in case they were hidden before)
-        document.querySelector('.modal-field:nth-child(5)').style.display = 'block'; // QoS
-        document.querySelector('.modal-field:nth-child(6)').style.display = 'block'; // Retain
-        
-        // Show modal
-        this.domElements.modal.style.display = 'block';
+        this.modalController.showMessageModal(messageData);
     }
 
     closeModal() {
-        this.domElements.modal.style.display = 'none';
+        this.modalController.close();
     }
 
-    // WebSocket Management
-    connectWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-        
-        console.log('Connecting to WebSocket:', wsUrl);
-        
-        this.websocket = new WebSocket(wsUrl);
-        
-        this.websocket.onopen = () => {
-            console.log('WebSocket connected');
-            this.updateConnectionStatus('connecting');
-        };
-        
-        this.websocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
-        };
-        
-        this.websocket.onclose = () => {
-            console.log('WebSocket disconnected');
-            this.websocket = null;
-            if (this.isConnected) {
-                this.updateConnectionStatus('disconnected');
-                this.isConnected = false;
-            }
-        };
-        
-        this.websocket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            this.updateConnectionStatus('disconnected');
-        };
-    }
-
-    handleWebSocketMessage(data) {
-        switch (data.type) {
-            case 'status':
-                this.handleStatusUpdate(data.data);
-                break;
-            case 'mqtt_message':
-                this.handleMQTTMessage(data.data);
-                break;
-            default:
-                console.log('Unknown message type:', data.type);
-        }
-    }
-
-    handleStatusUpdate(statusData) {
-        const status = statusData.status;
-        this.updateConnectionStatus(status);
-        
-        if (status === 'Connected') {
+    setupMQTTEventListeners() {
+        // Listen to MQTT connection events
+        this.eventEmitter.on('connection_established', () => {
             this.isConnected = true;
+            console.log('MQTT connection established');
+            // Update UI elements when connected
             this.domElements.subscribeBtn.disabled = false;
             this.domElements.liveIndicator.style.display = 'flex';
-            
-            // Show broker URL under Live indicator
-            const brokerUrl = `${this.domElements.host.value}:${this.domElements.port.value}`;
-            this.domElements.brokerUrl.textContent = brokerUrl;
-            this.domElements.brokerUrlDisplay.style.display = 'block';
-            
-            // Show UI elements when connected
-            this.domElements.statsPanel.style.display = 'block';
-        } else {
+            // StatsPanel handles its own display through events
+        });
+
+        this.eventEmitter.on('connection_lost', () => {
             this.isConnected = false;
+            console.log('MQTT connection lost');
+            // Update UI elements when disconnected
             this.domElements.subscribeBtn.disabled = true;
             this.domElements.liveIndicator.style.display = 'none';
-            this.domElements.brokerUrlDisplay.style.display = 'none';
-        }
+            // StatsPanel handles its own display through events
+        });
+
+        this.eventEmitter.on('connection_error', (error) => {
+            console.error('MQTT connection error:', error);
+            this.isConnected = false;
+            alert('Connection error: ' + error.userFriendly);
+        });
+
+        this.eventEmitter.on('mqtt_message', (messageData) => {
+            this.handleMQTTMessage(messageData);
+        });
+
+        this.eventEmitter.on('topic_subscribed', (topic) => {
+            console.log('Successfully subscribed to:', topic);
+        });
+
+        this.eventEmitter.on('topic_unsubscribed', (topic) => {
+            console.log('Successfully unsubscribed from:', topic);
+        });
+
+        this.eventEmitter.on('broker_info', (brokerInfo) => {
+            this.updateBrokerInfo(brokerInfo);
+        });
     }
+
+    updateBrokerInfo(brokerInfo) {
+        // Update broker URL display
+        const brokerUrl = `${this.domElements.host.value}:${this.domElements.port.value}`;
+        this.domElements.brokerUrl.textContent = brokerUrl;
+        this.domElements.brokerUrlDisplay.style.display = 'block';
+    }
+
+    setupSidebarEventListeners() {
+        // Listen to sidebar state changes
+        this.eventEmitter.on('sidebar_state_changed', (state) => {
+            console.log(`Sidebar state changed - collapsed: ${state.collapsed}`);
+        });
+
+        this.eventEmitter.on('sidebar_transition_complete', (state) => {
+            // Update unified container position when sidebar transition completes
+            if (this.unifiedContainer && this.layoutCalculator) {
+                this.unifiedContainer.updateDimensions(this.layoutCalculator);
+
+                // Network mode dimensions are now handled by NetworkGraph component
+            }
+        });
+
+        // Handle automatic collapse on small screens
+        this.eventEmitter.on('sidebar_auto_collapsed', (data) => {
+            console.log('Sidebar auto-collapsed due to:', data.reason);
+        });
+
+        // Handle resize events
+        this.eventEmitter.on('sidebar_resize', (dimensions) => {
+            // Update layout calculations if needed
+            if (this.layoutCalculator) {
+                // Force recalculation of layout dimensions
+                this.layoutCalculator.refresh?.();
+            }
+        });
+    }
+
+    setupThemeEventListeners() {
+        // Listen to theme changes
+        this.eventEmitter.on('theme_changed', (data) => {
+            console.log(`Theme changed from '${data.oldTheme}' to '${data.newTheme}'`);
+        });
+
+        this.eventEmitter.on('theme_applied', (data) => {
+            // Refresh colors when theme is applied
+            this.refreshThemeColors(data.colors);
+        });
+
+        this.eventEmitter.on('system_theme_changed', (data) => {
+            console.log(`System theme changed to '${data.theme}'`);
+        });
+    }
+
+    setupModalEventListeners() {
+        // Listen to modal events
+        this.eventEmitter.on('modal_opened', (data) => {
+            console.log(`Modal opened for: ${data.type}`, data.messageData?.topic || '');
+        });
+
+        this.eventEmitter.on('modal_closed', () => {
+            console.log('Modal closed');
+        });
+    }
+
+    setupStatsEventListeners() {
+        // Listen to stats panel events
+        this.eventEmitter.on('stats_updated', (stats) => {
+            // Optional: Log stats updates or perform additional processing
+            if (this.options?.debugStats) {
+                console.log('Stats updated:', stats);
+            }
+        });
+
+        this.eventEmitter.on('active_cards_request', () => {
+            // Provide current active cards count to stats panel
+            let activeCards = 0;
+
+            if (this.visualizationMode === 'bubbles' && this.bubbleAnimation) {
+                // For bubbles mode, get count from BubbleAnimation
+                const state = this.bubbleAnimation.getState();
+                activeCards = state.activeBubbles || 0;
+            } else if (this.visualizationMode === 'network' && this.networkGraph) {
+                // For network mode, get count from NetworkGraph
+                const state = this.networkGraph.getState();
+                activeCards = state.activeNodes || 0;
+            } else {
+                // For other modes, use unified element tracker
+                activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
+            }
+
+            this.statsPanel.setActiveCards(activeCards);
+        });
+
+        this.eventEmitter.on('stats_panel_shown', () => {
+            console.log('Stats panel shown');
+        });
+
+        this.eventEmitter.on('stats_panel_hidden', () => {
+            console.log('Stats panel hidden');
+        });
+    }
+
+    setupVisualizationEventListeners() {
+        // Listen to visualization events
+        this.eventEmitter.on('element_created', (data) => {
+            // Track element creation for performance monitoring
+            if (this.options?.debugVisualization) {
+                console.log('Element created:', data.type, data.message?.topic);
+            }
+        });
+
+        this.eventEmitter.on('visualization_cleaned', (data) => {
+            console.log(`Visualization cleaned: ${data.elementsRemoved} elements in ${data.cleanupTime}ms`);
+        });
+
+        this.eventEmitter.on('visualization_performance', (metrics) => {
+            if (this.options?.debugPerformance) {
+                console.log('Visualization performance:', metrics);
+            }
+        });
+
+        this.eventEmitter.on('visualization_theme_updated', (themeData) => {
+            console.log(`Visualization theme updated: ${themeData.newTheme}`);
+        });
+    }
+
+    setupColorLegendEventListeners() {
+        // Listen to theme changes to update color legend
+        this.eventEmitter.on('theme_changed', (themeData) => {
+            this.colorLegend.handleThemeChange();
+        });
+
+        // Listen for bubble clicks to show message modal
+        this.eventEmitter.on('bubble_clicked', (data) => {
+            console.log('Bubble clicked:', data.message.topic);
+            this.modalController.showMessageModal(data.message);
+        });
+    }
+
+    refreshThemeColors(newColors) {
+        // Clear existing colors to regenerate with new theme
+        this.topicColors.clear();
+        this.customerColors.clear();
+
+        // If we have active topics, regenerate their colors
+        if (this.activeTopics.size > 0) {
+            this.activeTopics.forEach(topic => {
+                this.getTopicColor(topic); // This will generate new colors for the current theme
+            });
+        }
+
+        console.log('Theme colors refreshed');
+    }
+
+    // Legacy WebSocket Management removed - now handled by MQTTConnectionManager
 
     handleMQTTMessage(messageData) {
-        //this.messageCount++;
-        this.activeTopics.add(messageData.topic);
-        
-        // Update message history for rate calculation (performance optimization)
-        this.updateMessageRate();
-        
-        // Create visualization based on mode
-        this.createVisualization(messageData);
-        
-        // Update stats (throttled to reduce DOM updates)
-        this.updateStats();
+
+        // Route message to appropriate visualization system
+        if (this.visualizationMode === 'bubbles' && this.bubbleAnimation) {
+            console.log('📨 Routing message to BubbleAnimation system:', messageData);
+
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+
+            // Send message to bubble animation system
+            this.bubbleAnimation.addMessage(messageData);
+
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'bubbles'
+            });
+        } else if (this.visualizationMode === 'network' && this.networkGraph) {
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+
+            // Send message to network graph system
+            this.networkGraph.addMessage(messageData);
+
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'network'
+            });
+        } else {
+            // Route to other visualization modes (legacy)
+            this.createVisualization(messageData);
+
+            // Still track topics for UI
+            this.activeTopics.add(messageData.topic);
+
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: this.visualizationMode || 'unknown'
+            });
+        }
     }
 
-    updateMessageRate() {
-        const now = Date.now();
-        this.messageHistory.push(now);
-        
-        // Keep only last 60 seconds of messages for rate calculation
-        // Use more efficient filtering approach
-        const cutoffTime = now - 60000;
-        let i = 0;
-        while (i < this.messageHistory.length && this.messageHistory[i] < cutoffTime) {
-            i++;
-        }
-        if (i > 0) {
-            this.messageHistory.splice(0, i);
-        }
-        
-        this.messageRate = this.messageHistory.length / 60;
-    }
+    // Removed: updateMessageRate() - now handled by StatsPanel
 
     createVisualization(messageData) {
         if (this.visualizationMode === 'network') {
             this.updateNetworkGraph(messageData);
         } else if (this.visualizationMode === 'clusters') {
             this.updateClusters(messageData);
-        } else if (this.visualizationMode === 'bubbles') {
-            this.updateD3Bubbles(messageData);
         } else if (this.visualizationMode === 'radial') {
             this.createD3RadialBubble(messageData);
         } else if (this.visualizationMode === 'starfield') {
             this.createMessageBubble(messageData);
         }
+        // Note: bubbles mode is now handled by BubbleAnimation component via handleMQTTMessage
     }
 
     // Message Animation - Optimized with object pooling
@@ -3497,27 +2720,11 @@ class MQTTVisualizer {
             startX = flowWidth / 2;
             startY = flowHeight / 2;
         } else {
-            // Default bubbles mode: start from opposite side of movement direction
-            const safeCardWidth = 600; // Use CSS max-width value (increased by 50%)
-            const margin = 20;
-            
-            if (this.bubbleDirection.y === -1) {
-                // Moving up: start from bottom
-                startX = margin + Math.random() * (flowWidth - safeCardWidth - 2 * margin);
-                startY = flowHeight + 100;
-            } else if (this.bubbleDirection.y === 1) {
-                // Moving down: start from top
-                startX = margin + Math.random() * (flowWidth - safeCardWidth - 2 * margin);
-                startY = -100;
-            } else if (this.bubbleDirection.x === -1) {
-                // Moving left: start from right
-                startX = flowWidth + 100;
-                startY = margin + Math.random() * (flowHeight - 2 * margin);
-            } else if (this.bubbleDirection.x === 1) {
-                // Moving right: start from left
-                startX = -safeCardWidth - 100;
-                startY = margin + Math.random() * (flowHeight - 2 * margin);
-            }
+            // Legacy bubbles mode: now handled by BubbleAnimation component
+            // This fallback should not be reached since bubbles mode uses BubbleAnimation
+            startX = flowWidth / 2;
+            startY = flowHeight / 2;
+            console.warn('createMessageBubble: Unexpected fallback to legacy bubbles mode');
         }
         
         if (this.visualizationMode === 'radial') {
@@ -3695,83 +2902,21 @@ class MQTTVisualizer {
             
             animate();
         } else {
-            // Default bubbles animation: directional movement controlled by cursor keys
-            const startTime = Date.now();
-            const flowWidth = this.domElements.messageFlow.clientWidth;
-            const flowHeight = this.domElements.messageFlow.clientHeight;
-            // Calculate dynamic travel distance based on screen size and direction
-            const buffer = 500;
-            let targetX, targetY;
-            
-            if (this.bubbleDirection.x !== 0) {
-                // Horizontal movement: travel across full width plus buffer
-                const travelDistance = flowWidth + buffer * 2;
-                targetX = startX + (this.bubbleDirection.x * travelDistance);
-                targetY = startY; // No vertical movement
-            } else {
-                // Vertical movement: travel across full height plus buffer
-                const travelDistance = flowHeight + buffer * 2;
-                targetX = startX; // No horizontal movement
-                targetY = startY + (this.bubbleDirection.y * travelDistance);
-            }
-            
-            const animate = () => {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // Animate in the controlled direction
-                const currentX = startX + (targetX - startX) * progress;
-                const currentY = startY + (targetY - startY) * progress;
-                
-                bubble.style.left = `${currentX}px`;
-                bubble.style.top = `${currentY}px`;
-                
-                // Check if off screen with larger buffer to let boxes fully exit
-                const buffer = 500;
-                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
-                                   currentY < -buffer || currentY > flowHeight + buffer);
-                
-                if (progress < 1 && !isOffScreen && bubble.parentNode) {
-                    requestAnimationFrame(animate);
-                } else if (bubble.parentNode) {
-                    // Remove card when animation completes or goes off screen
+            // Legacy bubbles animation: now handled by BubbleAnimation component
+            console.warn('animateMessage: Unexpected fallback to legacy bubbles mode');
+            // Just fade out the bubble since this shouldn't happen
+            bubble.style.transition = 'opacity 1s ease-out';
+            bubble.style.opacity = '0';
+            setTimeout(() => {
+                if (bubble.parentNode) {
                     bubble.parentNode.removeChild(bubble);
                     this.returnBubbleToPool(bubble);
                 }
-            };
-            
-            animate();
+            }, 1000);
         }
     }
 
-    // Network Graph Implementation - Updated for unified architecture
-    updateNetworkGraph(messageData) {
-        // Ensure network animation is initialized
-        if (!this.networkAnimation) {
-            console.warn('NetworkAnimation not initialized for network mode');
-            return;
-        }
-
-        const customer = this.extractCustomerFromTopic(messageData.topic);
-        const customerColor = this.getCustomerColor(customer);
-        const topicColor = this.getTopicColor(messageData.topic);
-
-        // Process message through NetworkAnimation
-        const { customerNode, topicNode } = this.networkAnimation.processMessage(messageData, customerColor, topicColor);
-
-        // Create pulse animation from broker to customer to topic
-        if (customerNode && topicNode) {
-            // Pulse from broker to customer
-            this.networkAnimation.createPulse('broker', customer);
-
-            // Delay pulse from customer to topic
-            setTimeout(() => {
-                this.networkAnimation.createPulse(customer, topicNode.id);
-            }, 400);
-        }
-
-        console.log(`NetworkAnimation: Processed message for ${customer}`);
-    }
+    // Network Graph Implementation is now handled by NetworkGraph component
 
     // Clusters Implementation - Process messages through ClustersAnimation
     updateClusters(messageData) {
@@ -4413,50 +3558,7 @@ class MQTTVisualizer {
         }
     }
     
-    // Legacy method - no longer used with D3.js implementation
-    updateCustomerNode(customer, messageData) {
-        // This method is no longer used - functionality moved to addNetworkMessage()
-        return;
-        
-        if (!this.networkNodes.has(customer)) {
-            // Create new customer node with proper radial positioning
-            const nodeCount = this.networkNodes.size;
-            const angle = (nodeCount * 2 * Math.PI) / Math.max(1, nodeCount + 1);
-            const flowWidth = this.domElements.messageFlow.clientWidth;
-            const flowHeight = this.domElements.messageFlow.clientHeight;
-            // Scale distance based on screen size - reduced for shorter lines
-            const distance = Math.min(flowWidth, flowHeight) * 0.35;
-            
-            const node = {
-                x: this.brokerNode.x + Math.cos(angle) * distance,
-                y: this.brokerNode.y + Math.sin(angle) * distance,
-                radius: 45, // Scaled up for full screen (increased by 50%)
-                color: color,
-                customer: customer,
-                messageCount: 0,
-                lastActivity: Date.now(),
-                element: null,
-                topics: new Set(),
-                targetX: this.brokerNode.x + Math.cos(angle) * distance,
-                targetY: this.brokerNode.y + Math.sin(angle) * distance
-            };
-            
-            this.createCustomerNodeElement(node);
-            this.networkNodes.set(customer, node);
-            
-            // Create connection to broker
-            this.createConnection(this.brokerNode, node, color);
-            
-            // Redistribute all customer nodes for even spacing
-            this.redistributeCustomerNodes();
-        }
-        
-        // Update activity
-        const node = this.networkNodes.get(customer);
-        node.messageCount++;
-        node.lastActivity = Date.now();
-        node.topics.add(messageData.topic);
-    }
+    // Legacy updateCustomerNode method removed - functionality moved to addNetworkMessage()
     
     createMessageCircle(messageData) {
         const customer = this.extractCustomerFromTopic(messageData.topic);
@@ -5206,10 +4308,7 @@ class MQTTVisualizer {
         return bestPosition;
     }
     
-    calculatePositionScore(x, y, minSpacing, existingNodes, customerNode) {
-        // Legacy method - kept for compatibility but not used for new positioning
-        return this.calculateAdvancedPositionScore(x, y, minSpacing, existingNodes, customerNode);
-    }
+    // calculatePositionScore method removed - legacy compatibility shim no longer needed
     
     calculateAdvancedPositionScore(x, y, minSpacing, allNodes, customerNode) {
         let score = 100; // Base score
@@ -5831,146 +4930,9 @@ class MQTTVisualizer {
         });
     }
 
-    // D3 Bubbles Implementation
-    updateD3Bubbles(messageData) {
-        if (!this.d3BubblesSvg) {
-            this.initializeD3Bubbles();
-        }
-        
-        // Create a new bubble node for this message
-        this.createD3Bubble(messageData);
-    }
+    // Legacy D3 Bubbles Implementation removed - now handled by BubbleAnimation component
     
-    initializeD3Bubbles() {
-        // Clear existing content
-        const existingSvg = this.domElements.messageFlow.querySelector('#d3-bubbles');
-        if (existingSvg) {
-            existingSvg.remove();
-        }
-        
-        // Remove any existing message bubbles
-        const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble');
-        bubbles.forEach(bubble => bubble.remove());
-        
-        // Clear any existing D3 network
-        if (this.d3Svg) {
-            this.d3Svg.remove();
-            this.d3Svg = null;
-            this.d3Simulation = null;
-        }
-        
-        // Create D3 SVG for bubbles - use container dimensions to avoid sidebar
-        const container = this.domElements.messageFlow;
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        
-        this.d3BubblesSvg = d3.select(container)
-            .append('svg')
-            .attr('id', 'd3-bubbles')
-            .attr('width', width)
-            .attr('height', height)
-            .style('position', 'fixed')
-            .style('top', '0')
-            .style('left', '0')
-            .style('width', '100vw')
-            .style('height', '100vh')
-            .style('z-index', '1');
-        
-        // Create container groups
-        this.d3BubblesContainer = {
-            bubbles: this.d3BubblesSvg.append('g').attr('class', 'bubbles'),
-            labels: this.d3BubblesSvg.append('g').attr('class', 'labels')
-        };
-        
-        // Initialize bubbles data array
-        this.d3BubblesData = [];
-        
-        // Setup resize handling
-        window.addEventListener('resize', () => {
-            const newWidth = window.innerWidth;
-            const newHeight = window.innerHeight;
-            this.d3BubblesSvg
-                .attr('width', newWidth)
-                .attr('height', newHeight);
-        });
-    }
-    
-    createD3Bubble(messageData) {
-        // Unified Falling Boxes Mode Implementation - Task 5.1 Complete
-        if (!this.unifiedContainer) {
-            console.warn('Unified container not initialized for falling boxes mode');
-            return;
-        }
-        
-        // Process message data using unified MessageProcessor
-        const processedMessage = this.messageProcessor.processMessage(messageData);
-        
-        // Get container and dimensions from unified system
-        const container = this.unifiedContainer.getContainer();
-        const dimensions = this.unifiedContainer.getDimensions();
-        
-        // Create LinearAnimation with current bubble direction
-        const linearAnimation = new LinearAnimation(
-            container, 
-            this.bubbleDirection, 
-            this.layoutCalculator,
-            {
-                duration: 11250, // 25% faster acceleration (was 15000)
-                margin: 100,
-                elementSize: { width: 50, height: 50 }
-            }
-        );
-        
-        // Calculate starting position using LinearAnimation logic
-        const startPos = linearAnimation.getStartPosition(dimensions.width, dimensions.height);
-        
-        // Create circle using Unified Element System
-        const circle = this.elementSystem.createSVGElement(
-            container, 
-            processedMessage, 
-            startPos.x, 
-            startPos.y
-        );
-        
-        // Add click handler for message modal
-        circle.on('click', () => {
-            this.showMessageModal(messageData);
-        });
-        
-        // Track element with unified tracker
-        this.elementTracker.trackElement(circle, {
-            type: 'linear',
-            status: 'animating',
-            createdAt: Date.now(),
-            messageData: processedMessage
-        });
-        
-        // Register element with cleanup manager for automatic cleanup
-        this.cleanupManager.trackElement(circle, {
-            type: 'linear',
-            onCleanup: () => {
-                this.elementTracker.removeElement(circle);
-                console.log('CleanupManager: Removed stuck falling element');
-            }
-        });
-        
-        // Start linear animation
-        linearAnimation.animateSVGElement(
-            circle, 
-            dimensions.width, 
-            dimensions.height,
-            () => {
-                // Animation complete - untrack element
-                this.cleanupManager.untrackElement(circle);
-                this.elementTracker.removeElement(circle);
-                console.log('LinearAnimation: Element completed and removed');
-            }
-        );
-        
-        console.log('LinearAnimation: Started falling element, will travel from', linearAnimation.getStartPosition(dimensions.width, dimensions.height), 'to end position');
-        
-        console.log('Task 5.1: Created falling circle with direction:', this.bubbleDirection);
-    }
+    // Legacy createD3Bubble method removed - now handled by BubbleAnimation component
 
     // D3 Radial Implementation (using original DOM bubbles with D3 animation)
     createD3RadialBubble(messageData) {
@@ -6059,29 +5021,124 @@ class MQTTVisualizer {
             mode = activeBtn ? activeBtn.dataset.mode : 'radial';
         }
 
-        // Use the unified mode switching manager for clean transitions
-        return this.modeSwitchingManager.switchMode(mode);
+        console.log(`Setting visualization mode to: ${mode}`);
+
+        // Deactivate current visualization system (avoid deactivating the target)
+        if (mode !== 'bubbles' && this.bubbleAnimation) {
+            this.bubbleAnimation.deactivate();
+        }
+        if (mode !== 'network' && this.networkGraph) {
+            this.networkGraph.deactivate();
+        }
+
+        // Enable the requested mode
+        if (mode === 'bubbles') {
+            // Activate the bubble animation system
+            this.bubbleAnimation.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Bubbles mode activated successfully');
+            return true;
+        } else if (mode === 'network') {
+            // Activate the network graph system
+            this.networkGraph.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Network mode activated successfully');
+            return true;
+        }
+
+        // Other visualization modes are temporarily disabled during refactoring
+        console.log(`Visualization mode '${mode}' is temporarily disabled during refactoring`);
+
+        // Show refactoring status instead
+        this.showRefactoringStatus();
+
+        // Still update the button states for UI testing
+        this.updateVisualizationButtonStates(mode);
+
+        return false;
+    }
+
+    showRefactoringStatus() {
+        // Clear the message flow area and show refactoring status
+        const messageFlow = this.domElements.messageFlow;
+        if (!messageFlow) return;
+
+        messageFlow.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 40px; background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <div style="background: rgba(0,0,0,0.2); padding: 30px; border-radius: 15px; max-width: 800px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+                    <h2 style="margin: 0 0 20px 0; color: #ecf0f1; font-size: 2.2em; font-weight: 300;">🔧 Refactoring in Progress</h2>
+
+                    <div style="text-align: left; margin-bottom: 30px;">
+                        <h3 style="color: #1abc9c; margin-bottom: 15px; border-bottom: 2px solid #1abc9c; padding-bottom: 5px;">✅ Completed Components (Available for Testing)</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>🏗️ DOM Manager:</strong> Centralized element caching, validation, lazy loading
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>📱 Sidebar Controller:</strong> Toggle sidebar, state persistence, responsive behavior
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>🎨 Theme Manager:</strong> Multiple themes, system detection, custom themes
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>🔌 MQTT Connection:</strong> SSL/TLS support, smart reconnection, WebSocket handling
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>💫 Bubbles Visualization:</strong> D3.js falling bubbles with gravity physics
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(39, 174, 96, 0.2); border-left: 4px solid #27ae60; border-radius: 4px;">
+                                <strong>🌐 Network Visualization:</strong> Force-directed graph with broker connections
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div style="text-align: left; margin-bottom: 20px;">
+                        <h3 style="color: #f39c12; margin-bottom: 15px; border-bottom: 2px solid #f39c12; padding-bottom: 5px;">🚧 Components Being Refactored</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(243, 156, 18, 0.2); border-left: 4px solid #f39c12; border-radius: 4px;">
+                                <strong>📋 Modal Controller:</strong> Reusable modal system, keyboard navigation
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(231, 76, 60, 0.2); border-left: 4px solid #e74c3c; border-radius: 4px;">
+                                <strong>📊 Stats Panel:</strong> Performance monitoring, statistics display
+                            </li>
+                            <li style="margin: 8px 0; padding: 8px; background: rgba(231, 76, 60, 0.2); border-left: 4px solid #e74c3c; border-radius: 4px;">
+                                <strong>📈 All Visualizations:</strong> D3.js optimization, modular design
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div style="background: rgba(52, 152, 219, 0.3); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                        <h4 style="color: #3498db; margin: 0 0 10px 0;">🧪 What You Can Test Right Now:</h4>
+                        <div style="text-align: left; color: #ecf0f1;">
+                            <p><strong>Sidebar:</strong> Toggle with the chevron button, test responsive behavior on different screen sizes</p>
+                            <p><strong>Themes:</strong> Switch between themes in the dropdown (dark, spring, summer, autumn, winter)</p>
+                            <p><strong>MQTT Connection:</strong> Test SSL/TLS connections, form validation, error handling</p>
+                            <p><strong>Bubbles Mode:</strong> D3.js falling bubbles with gravity, customer colors, click interactions</p>
+                            <p><strong>Network Mode:</strong> Force-directed graph showing broker → customer → topic connections</p>
+                            <p><strong>UI Responsiveness:</strong> Resize window, test button states, form interactions</p>
+                        </div>
+                    </div>
+
+                    <p style="margin: 20px 0 0 0; font-style: italic; color: #bdc3c7; font-size: 0.9em;">
+                        Progress: 8/23 tasks completed (~35%) | Next: Modal Controller & Stats Panel
+                    </p>
+                </div>
+            </div>
+        `;
     }
     
     // Update active states for visualization buttons
     updateVisualizationButtonStates(activeMode) {
-        // Update icon buttons (collapsed sidebar)
-        this.domElements.vizIconButtons.forEach(btn => {
-            if (btn.dataset.mode === activeMode) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-        
-        // Update mode buttons (expanded sidebar)
-        this.domElements.vizModeButtons.forEach(btn => {
-            if (btn.dataset.mode === activeMode) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
+        // Use sidebar controller to update visualization buttons
+        this.sidebarController.updateVisualizationButtons(activeMode);
     }
     
     clearAllVisualizations() {
@@ -6171,59 +5228,20 @@ class MQTTVisualizer {
         this.domElements.activeTopics.textContent = '0';
     }
 
-    // Color Management
+    // Color Management - delegated to BaseVisualization
     getTopicColor(topic) {
-        if (!this.topicColors.has(topic)) {
-            const customer = this.extractCustomerFromTopic(topic);
-            const color = this.getCustomerColor(customer);
-            this.topicColors.set(topic, color);
-            this.updateTopicLegend();
-        }
-        return this.topicColors.get(topic);
+        const color = this.baseVisualization.getTopicColor(topic);
+        this.updateTopicLegend();
+        return color;
     }
 
     getCustomerColor(customer) {
-        if (!this.customerColors.has(customer)) {
-            const colors = this.getThemeColors();
-            const color = colors[this.customerColors.size % colors.length];
-            this.customerColors.set(customer, color);
-        }
-        
-        return this.customerColors.get(customer);
+        return this.baseVisualization.getCustomerColor(customer);
     }
 
-    // Extract color palettes into separate method for better organization
+    // Get theme colors using theme manager
     getThemeColors() {
-        const currentTheme = document.body.getAttribute('data-theme') || 'default';
-        
-        const colorPalettes = {
-            dark: [
-                '#00FF41', '#00FFFF', '#FF1493', '#FF4500', '#FFFF00',
-                '#FF69B4', '#00FA9A', '#FF6347', '#7FFF00', '#00BFFF'
-            ],
-            spring: [
-                '#8BC34A', '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7',
-                '#C8E6C9', '#E8F5E8', '#FFEB3B', '#FFF176', '#FFECB3'
-            ],
-            summer: [
-                '#FF9800', '#FFB74D', '#FFCC02', '#FFC107', '#FF8F00',
-                '#FF6F00', '#E65100', '#FF5722', '#FF7043', '#FFAB40'
-            ],
-            autumn: [
-                '#D2691E', '#CD853F', '#DEB887', '#F4A460', '#DAA520',
-                '#B8860B', '#A0522D', '#8B4513', '#FF8C00', '#FF7F50'
-            ],
-            winter: [
-                '#4682B4', '#5F9EA0', '#6495ED', '#87CEEB', '#B0C4DE',
-                '#B0E0E6', '#ADD8E6', '#E0F6FF', '#F0F8FF', '#DCDCDC'
-            ],
-            default: [
-                '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-                '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-            ]
-        };
-        
-        return colorPalettes[currentTheme] || colorPalettes.default;
+        return this.themeManager.getCurrentColors();
     }
 
     // Z-index management with bounds checking
@@ -6247,7 +5265,7 @@ class MQTTVisualizer {
     }
 
     extractCustomerFromTopic(topic) {
-        return topic.split('/')[0] || topic;
+        return this.baseVisualization.extractCustomerFromTopic(topic);
     }
     
     createTopicLabel(topic) {
@@ -6306,12 +5324,7 @@ class MQTTVisualizer {
         return configs[status] || configs.disconnected;
     }
 
-    updateStats() {
-        // Use cached DOM elements for better performance
-        //this.domElements.totalMessages.textContent = this.messageCount;
-        this.domElements.messageRate.textContent = this.messageRate.toFixed(1);
-        this.domElements.activeTopics.textContent = this.activeTopics.size;
-    }
+    // Removed: updateStats() - now handled by StatsPanel
 
     updateTopicLegend() {
         // Update main content area legend only (sidebar topic list removed)
@@ -6344,12 +5357,7 @@ class MQTTVisualizer {
     }
 
 
-    startStatsUpdate() {
-        // Use throttled updates to improve performance
-        setInterval(() => {
-            this.updateStats();
-        }, 1000);
-    }
+    // Removed: startStatsUpdate() - now handled by StatsPanel
 
     // API Calls
     async apiCall(endpoint, method = 'GET', data = null) {
@@ -6385,33 +5393,31 @@ class MQTTVisualizer {
 
     // Connection Management
     async toggleConnection() {
-        if (this.isConnected) {
-            await this.disconnect();
-        } else {
-            await this.connect();
+        console.log('=== MQTTVisualizer.toggleConnection called ===');
+        console.log('Connection Manager status:', this.mqttConnectionManager ? 'Available' : 'NOT AVAILABLE');
+
+        if (!this.mqttConnectionManager) {
+            console.error('❌ MQTT Connection Manager not initialized!');
+            alert('Connection manager not available. Please refresh the page.');
+            return;
+        }
+
+        try {
+            console.log('📞 Calling mqttConnectionManager.toggleConnection()...');
+            const result = await this.mqttConnectionManager.toggleConnection();
+            console.log('✅ mqttConnectionManager.toggleConnection() completed:', result);
+        } catch (error) {
+            console.error('❌ Toggle connection failed:', error);
+            alert('Connection failed: ' + error.message);
         }
     }
 
     async connect() {
-        const connectionConfig = this.getConnectionConfig();
-        
-        if (!connectionConfig.host) {
-            alert('Please enter a broker host');
-            return;
-        }
-        
         try {
-            // Connect WebSocket first
-            this.connectWebSocket();
-            
-            // Then connect to MQTT
-            await this.apiCall('/connect', 'POST', connectionConfig);
-            
-            console.log('MQTT connection initiated');
+            await this.mqttConnectionManager.connect();
         } catch (error) {
             console.error('Connection failed:', error);
             alert('Connection failed: ' + error.message);
-            this.updateConnectionStatus('disconnected');
         }
     }
 
@@ -6427,22 +5433,7 @@ class MQTTVisualizer {
 
     async disconnect() {
         try {
-            // First, update UI to show disconnecting state
-            this.updateConnectionStatus('disconnected');
-            
-            // Call backend disconnect
-            await this.apiCall('/disconnect', 'POST');
-            
-            // Give time for status updates to propagate before closing WebSocket
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            if (this.websocket) {
-                this.websocket.close();
-            }
-            
-            // Reset client state
-            this.resetClientState();
-            
+            await this.mqttConnectionManager.disconnect();
         } catch (error) {
             console.error('Disconnect failed:', error);
             // Still update UI even if API call fails
@@ -6453,39 +5444,21 @@ class MQTTVisualizer {
 
     resetClientState() {
         this.isConnected = false;
-        //this.messageCount = 0;
         this.activeTopics.clear();
         this.topicColors.clear();
         this.messageHistory = [];
         
         this.updateTopicLegend();
-        this.updateStats();
-        this.clearAllVisualizations();
-        
-        // Hide UI elements when disconnected
-        this.domElements.statsPanel.style.display = 'none';
+        this.baseVisualization.cleanup();
+
+        // StatsPanel handles display through events
     }
 
     async subscribeToTopic() {
         const topic = this.domElements.topic.value;
-        
-        if (!topic) {
-            alert('Please enter a topic to subscribe to');
-            return;
-        }
-        
-        if (!this.isConnected) {
-            alert('Please connect to MQTT broker first');
-            return;
-        }
-        
+
         try {
-            await this.apiCall('/subscribe', 'POST', {
-                topic,
-                qos: 0
-            });
-            
-            console.log('Subscribed to:', topic);
+            await this.mqttConnectionManager.subscribeToTopic(topic);
             this.domElements.topic.value = '';
         } catch (error) {
             console.error('Subscription failed:', error);
@@ -6562,18 +5535,13 @@ class MQTTVisualizer {
             // Update stats every second
             if (timeDiff >= 1000) {
                 const fps = Math.round((this.frameCount * 1000) / timeDiff);
-                
-                // Update DOM elements directly
-                if (this.domElements.frameRate) {
-                    this.domElements.frameRate.textContent = fps;
-                }
-                
-                // Use unified element tracker for accurate count
-                const activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
-                if (this.domElements.activeCards) {
-                    this.domElements.activeCards.textContent = activeCards;
-                }
-                
+
+                // Emit frame rate event for StatsPanel
+                this.eventEmitter.emit('frame_rendered');
+
+                // Emit active cards request
+                this.eventEmitter.emit('active_cards_request');
+
                 this.frameCount = 0;
                 lastStatsUpdate = now;
             }
@@ -6589,24 +5557,98 @@ class MQTTVisualizer {
 // Global functions for HTML onclick handlers
 let visualizer;
 
-function toggleConnection() {
-    visualizer.toggleConnection();
-}
+// Define global functions immediately
+console.log('Defining global functions...');
 
-function subscribeToTopic() {
-    visualizer.subscribeToTopic();
-}
+window.toggleConnection = function() {
+    console.log('=== BUTTON CLICKED: toggleConnection called ===');
+    console.log('Visualizer object:', visualizer);
+    if (visualizer) {
+        console.log('✅ Visualizer found, proceeding with connection...');
+        console.log('MQTT Connection Manager:', visualizer.mqttConnectionManager);
 
-function switchVisualization() {
-    visualizer.switchVisualization();
-}
+        try {
+            visualizer.toggleConnection();
+            console.log('✅ toggleConnection method called successfully');
+        } catch (error) {
+            console.error('❌ Error calling visualizer.toggleConnection:', error);
+        }
+    } else {
+        console.error('❌ Visualizer not initialized! Current state:', typeof visualizer);
+        console.error('Please wait for page to fully load or check for initialization errors.');
+    }
+};
+
+window.subscribeToTopic = function() {
+    console.log('subscribeToTopic called, visualizer:', visualizer);
+    if (visualizer) {
+        visualizer.subscribeToTopic();
+    } else {
+        console.error('Visualizer not initialized for subscribeToTopic!');
+    }
+};
+
+console.log('Global functions defined. toggleConnection:', typeof window.toggleConnection);
+console.log('🎯 APP.JS LOADED SUCCESSFULLY! Window object available:', typeof window);
+console.log('📋 DOM readyState:', document.readyState);
+console.log('🕐 Setting up DOMContentLoaded listener...');
+
+// switchVisualization global function removed - broken due to missing parameters
 
 function switchTheme() {
     visualizer.switchTheme();
 }
 
+function toggleSSLOptions() {
+    const sslCheckbox = document.getElementById('ssl');
+    const sslOptions = document.getElementById('sslOptions');
+    const portInput = document.getElementById('port');
+
+    if (sslCheckbox.checked) {
+        sslOptions.style.display = 'block';
+        // Auto-update port to MQTTS default if still using standard MQTT port
+        if (portInput.value === '1883') {
+            portInput.value = '8883';
+        }
+    } else {
+        sslOptions.style.display = 'none';
+        // Auto-update port to MQTT default if still using MQTTS port
+        if (portInput.value === '8883') {
+            portInput.value = '1883';
+        }
+    }
+}
+
 // Initialize when page loads
+console.log('🔧 About to add DOMContentLoaded listener...');
+
 document.addEventListener('DOMContentLoaded', () => {
-    visualizer = new MQTTVisualizer();
-    
+    console.log('🚀 DOMContentLoaded event fired! Initializing visualizer...');
+    try {
+        console.log('📝 Creating new MQTTVisualizer instance...');
+        visualizer = new MQTTVisualizer();
+        console.log('✅ Visualizer initialized successfully:', visualizer);
+        console.log('🎯 Global toggleConnection function:', window.toggleConnection);
+    } catch (error) {
+        console.error('❌ Failed to initialize visualizer:', error);
+        console.error('❌ Error stack:', error.stack);
+        console.error('❌ Error details:', error.name, error.message);
+    }
 });
+
+console.log('✅ DOMContentLoaded listener added successfully');
+
+// Also try immediate initialization if DOM is already loaded
+if (document.readyState === 'loading') {
+    console.log('📋 DOM is still loading, waiting for DOMContentLoaded...');
+} else {
+    console.log('📋 DOM already loaded, initializing immediately...');
+    try {
+        console.log('📝 Creating new MQTTVisualizer instance (immediate)...');
+        visualizer = new MQTTVisualizer();
+        console.log('✅ Visualizer initialized successfully (immediate):', visualizer);
+    } catch (error) {
+        console.error('❌ Failed to initialize visualizer (immediate):', error);
+        console.error('❌ Error stack:', error.stack);
+    }
+}
