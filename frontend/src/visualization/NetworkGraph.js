@@ -36,6 +36,9 @@ class NetworkGraph extends BaseVisualization {
             // Brightness decay
             brightnessDecayRate: 0.995,
             minBrightness: 0.3,
+            // Size decay
+            sizeDecayRate: 0.995, // Same rate as brightness for consistency
+            minSizeScale: 0.66, // Shrink to 66% of original size
             ...options
         };
 
@@ -124,14 +127,16 @@ class NetworkGraph extends BaseVisualization {
         this.brokerNode = {
             id: 'broker',
             type: 'broker',
-            label: 'MQTT Broker',
+            label: '',
             x: centerX,
             y: centerY,
             fx: centerX, // Fixed position
             fy: centerY,
             radius: this.options.brokerRadius,
-            color: '#4ECDC4',
+            baseRadius: this.options.brokerRadius, // Store original radius
+            color: '#ff7300ff',
             brightness: 1.0,
+            sizeScale: 1.0, // Size scaling factor
             lastActivity: Date.now()
         };
 
@@ -177,6 +182,8 @@ class NetworkGraph extends BaseVisualization {
             .force('collide', d3.forceCollide()
                 .radius(this.options.collideRadius))
             .force('customerSeparation', this.createCustomerSeparationForce())
+            .force('brokerRepulsion', this.createBrokerRepulsionForce())
+            .force('topicCustomerAlignment', this.createTopicCustomerAlignmentForce())
             .force('boundary', this.createBoundaryForce(width, height))
             .on('tick', () => this.onTick());
 
@@ -213,6 +220,93 @@ class NetworkGraph extends BaseVisualization {
                     }
                 }
             }
+        };
+    }
+
+    /**
+     * Create custom broker repulsion force
+     * Creates a minimum exclusion zone around the central broker node
+     */
+    createBrokerRepulsionForce() {
+        const minDistance = 120; // Minimum distance all nodes must maintain from broker
+        const repulsionRadius = 200; // Extended influence radius
+        const forceStrength = 1.5; // Strong repulsion force
+
+        return (alpha) => {
+            if (!this.brokerNode) return;
+
+            this.nodes.forEach(node => {
+                if (node.id === 'broker') return; // Skip broker itself
+
+                const dx = node.x - this.brokerNode.x;
+                const dy = node.y - this.brokerNode.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Apply very strong force within minimum distance
+                if (distance < minDistance && distance > 0) {
+                    const force = (minDistance - distance) / distance * alpha * forceStrength * 3;
+                    const fx = dx * force;
+                    const fy = dy * force;
+
+                    node.vx += fx;
+                    node.vy += fy;
+
+                    // Hard constraint: don't allow nodes closer than minimum distance
+                    const ratio = minDistance / distance;
+                    node.x = this.brokerNode.x + dx * ratio;
+                    node.y = this.brokerNode.y + dy * ratio;
+                }
+                // Apply gradual repulsion in extended radius
+                else if (distance < repulsionRadius && distance > 0) {
+                    const force = (repulsionRadius - distance) / distance * alpha * forceStrength;
+                    const fx = dx * force;
+                    const fy = dy * force;
+
+                    node.vx += fx;
+                    node.vy += fy;
+                }
+            });
+        };
+    }
+
+    /**
+     * Create force to align topic nodes with their customer nodes
+     * Pushes topic nodes to the same side of broker as their customer
+     */
+    createTopicCustomerAlignmentForce() {
+        const alignmentStrength = 0.3;
+
+        return (alpha) => {
+            if (!this.brokerNode) return;
+
+            this.nodes.forEach(node => {
+                if (node.type !== 'topic') return;
+
+                // Find the customer node for this topic
+                const customerNode = this.customerNodes.get(node.customer);
+                if (!customerNode) return;
+
+                // Calculate vectors from broker to customer and broker to topic
+                const customerDx = customerNode.x - this.brokerNode.x;
+                const customerDy = customerNode.y - this.brokerNode.y;
+                const topicDx = node.x - this.brokerNode.x;
+                const topicDy = node.y - this.brokerNode.y;
+
+                // Calculate dot product to determine alignment
+                const customerDistance = Math.sqrt(customerDx * customerDx + customerDy * customerDy);
+                const topicDistance = Math.sqrt(topicDx * topicDx + topicDy * topicDy);
+
+                if (customerDistance > 0 && topicDistance > 0) {
+                    // Normalize vectors
+                    const customerUx = customerDx / customerDistance;
+                    const customerUy = customerDy / customerDistance;
+
+                    // Push topic in the same direction as customer (away from broker)
+                    const force = alpha * alignmentStrength;
+                    node.vx += customerUx * force;
+                    node.vy += customerUy * force;
+                }
+            });
         };
     }
 
@@ -333,6 +427,7 @@ class NetworkGraph extends BaseVisualization {
         if (this.customerNodes.has(customer)) {
             const node = this.customerNodes.get(customer);
             node.brightness = 1.0; // Reset brightness on activity
+            node.sizeScale = 1.0; // Reset size on activity
             return node;
         }
 
@@ -342,8 +437,10 @@ class NetworkGraph extends BaseVisualization {
             type: 'customer',
             label: customer,
             radius: this.options.customerRadius,
+            baseRadius: this.options.customerRadius, // Store original radius
             color: color,
             brightness: 1.0,
+            sizeScale: 1.0, // Size scaling factor
             lastActivity: Date.now(),
             messageCount: 1
         };
@@ -379,6 +476,7 @@ class NetworkGraph extends BaseVisualization {
         if (this.topicNodes.has(nodeId)) {
             const node = this.topicNodes.get(nodeId);
             node.brightness = 1.0; // Reset brightness on activity
+            node.sizeScale = 1.0; // Reset size on activity
             node.lastActivity = Date.now();
             node.messageCount++;
             return node;
@@ -393,8 +491,10 @@ class NetworkGraph extends BaseVisualization {
             type: 'topic',
             label: deviceId,
             radius: this.options.topicRadius,
+            baseRadius: this.options.topicRadius, // Store original radius
             color: color,
             brightness: 1.0,
+            sizeScale: 1.0, // Size scaling factor
             lastActivity: Date.now(),
             messageCount: 1,
             deviceId: deviceId,
@@ -419,6 +519,20 @@ class NetworkGraph extends BaseVisualization {
 
         this.updateVisualization();
         return topicNode;
+    }
+
+
+    /**
+     * Get the number of topic nodes connected to a customer
+     */
+    getCustomerTopicCount(customerId) {
+        let count = 0;
+        this.topicNodes.forEach((node) => {
+            if (node.customer === customerId) {
+                count++;
+            }
+        });
+        return count;
     }
 
     /**
@@ -480,8 +594,9 @@ class NetworkGraph extends BaseVisualization {
             .attr('stroke', '#fff')
             .attr('stroke-width', 2);
 
-        // Add labels
+        // Add main labels
         nodeEnter.append('text')
+            .attr('class', 'node-label')
             .attr('text-anchor', 'middle')
             .attr('dy', d => d.radius + 15)
             .attr('fill', 'white')
@@ -490,6 +605,22 @@ class NetworkGraph extends BaseVisualization {
             .style('pointer-events', 'none')
             .text(d => d.label);
 
+        // Add device count numbers in center of customer nodes
+        nodeEnter.filter(d => d.type === 'customer')
+            .append('text')
+            .attr('class', 'device-count')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .attr('fill', 'white')
+            .attr('font-size', '18px')
+            .attr('font-weight', 'bolder')
+            .style('pointer-events', 'none')
+            .style('text-shadow', '1px 1px 2px rgba(0,0,0,0.8)')
+            .text(d => {
+                const count = this.getCustomerTopicCount(d.id);
+                return count.toString();
+            });
+
         // Add click handlers
         nodeEnter.on('click', (event, d) => {
             this.eventEmitter.emit('node_clicked', {
@@ -497,6 +628,14 @@ class NetworkGraph extends BaseVisualization {
                 event: event
             });
         });
+
+        // Update existing device count numbers
+        nodeSelection.selectAll('.device-count')
+            .text(d => {
+                if (d.type !== 'customer') return '';
+                const count = this.getCustomerTopicCount(d.id);
+                return count.toString();
+            });
 
         nodeSelection.exit().remove();
 
@@ -542,14 +681,25 @@ class NetworkGraph extends BaseVisualization {
                 const timeSinceActivity = Date.now() - node.lastActivity;
                 const decayFactor = Math.pow(this.options.brightnessDecayRate, timeSinceActivity / 1000);
                 node.brightness = Math.max(this.options.minBrightness, decayFactor);
+
+                // Decay size over time (using same decay rate for consistency)
+                const sizeDecayFactor = Math.pow(this.options.sizeDecayRate, timeSinceActivity / 1000);
+                node.sizeScale = Math.max(this.options.minSizeScale, sizeDecayFactor);
+
+                // Update actual radius based on scale
+                node.radius = node.baseRadius * node.sizeScale;
             });
 
-            // Update visual brightness
+            // Update visual brightness and size
             this.nodeGroups.selectAll('circle')
+                .attr('opacity', d => d.brightness)
+                .attr('r', d => d.radius);
+
+            this.nodeGroups.selectAll('.node-label')
                 .attr('opacity', d => d.brightness);
 
-            this.nodeGroups.selectAll('text')
-                .attr('opacity', d => d.brightness);
+            this.nodeGroups.selectAll('.device-count')
+                .attr('opacity', d => d.brightness * 0.7); // Slightly dimmer than main labels
 
             this.linkGroups.selectAll('line')
                 .attr('opacity', d => Math.min(d.source.brightness, d.target.brightness) * 0.6);
@@ -572,30 +722,64 @@ class NetworkGraph extends BaseVisualization {
      */
     setupResizeHandler() {
         const resizeHandler = () => {
-            const rect = this.container.getBoundingClientRect();
-
-            if (this.svg) {
-                this.svg
-                    .attr('width', rect.width)
-                    .attr('height', rect.height);
-            }
-
-            if (this.simulation) {
-                // Update broker position
-                this.brokerNode.fx = rect.width / 2;
-                this.brokerNode.fy = rect.height / 2;
-
-                // Update forces
-                this.simulation
-                    .force('center', d3.forceCenter(rect.width / 2, rect.height / 2))
-                    .force('boundary', this.createBoundaryForce(rect.width, rect.height))
-                    .alpha(0.3)
-                    .restart();
-            }
+            this.updateViewport();
         };
 
+        // Listen for window resize
         window.addEventListener('resize', resizeHandler);
         this.resizeHandler = resizeHandler;
+
+        // Also listen for sidebar toggle events (if available)
+        if (this.eventEmitter) {
+            this.eventEmitter.on('sidebar_toggled', () => {
+                // Small delay to allow DOM to update
+                setTimeout(() => {
+                    this.updateViewport();
+                }, 100);
+            });
+        }
+
+        // Periodically check for container size changes (fallback)
+        this.containerCheckInterval = setInterval(() => {
+            const rect = this.container.getBoundingClientRect();
+            if (this.lastWidth !== rect.width || this.lastHeight !== rect.height) {
+                console.log('NetworkGraph: Container size changed, updating viewport');
+                this.updateViewport();
+            }
+        }, 1000); // Check every second
+    }
+
+    /**
+     * Update viewport and force simulation for current container dimensions
+     */
+    updateViewport() {
+        const rect = this.container.getBoundingClientRect();
+        console.log('NetworkGraph: Updating viewport to', rect.width, 'x', rect.height);
+
+        // Store dimensions for change detection
+        this.lastWidth = rect.width;
+        this.lastHeight = rect.height;
+
+        if (this.svg) {
+            this.svg
+                .attr('width', rect.width)
+                .attr('height', rect.height);
+        }
+
+        if (this.simulation && this.brokerNode) {
+            // Update broker position to new center
+            this.brokerNode.fx = rect.width / 2;
+            this.brokerNode.fy = rect.height / 2;
+
+            // Update forces with new dimensions
+            this.simulation
+                .force('center', d3.forceCenter(rect.width / 2, rect.height / 2))
+                .force('brokerRepulsion', this.createBrokerRepulsionForce())
+                .force('topicCustomerAlignment', this.createTopicCustomerAlignmentForce())
+                .force('boundary', this.createBoundaryForce(rect.width, rect.height))
+                .alpha(0.5) // Higher alpha for more aggressive repositioning
+                .restart();
+        }
     }
 
     /**
@@ -682,6 +866,10 @@ class NetworkGraph extends BaseVisualization {
 
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
+        }
+
+        if (this.containerCheckInterval) {
+            clearInterval(this.containerCheckInterval);
         }
 
         if (this.svg) {
