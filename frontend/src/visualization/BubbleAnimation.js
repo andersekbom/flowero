@@ -218,22 +218,21 @@ class BubbleAnimation extends BaseVisualization {
             .style('cursor', 'pointer')
             .style('pointer-events', 'all');
 
-        // Add circle
+        // Add circle (styled to match network graph)
         bubbleGroup.append('circle')
             .attr('r', bubble.radius)
             .attr('fill', bubble.color)
-            .attr('stroke', 'white')
-            .attr('stroke-width', 1)
-            .attr('opacity', bubble.opacity)
-            .style('filter', 'drop-shadow(2px 2px 4px rgba(0,0,0,0.3))');
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .attr('opacity', bubble.opacity);
 
-        // Add device label
+        // Add device label (positioned below circle like network graph)
         if (bubble.deviceId) {
             bubbleGroup.append('text')
                 .attr('text-anchor', 'middle')
-                .attr('dy', '0.35em')
+                .attr('dy', bubble.radius + 15)
                 .attr('fill', 'white')
-                .attr('font-size', '10px')
+                .attr('font-size', '12px')
                 .attr('font-weight', 'bold')
                 .style('pointer-events', 'none')
                 .style('user-select', 'none')

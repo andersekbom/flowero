@@ -20,18 +20,21 @@ class StarfieldVisualization extends BaseVisualization {
         this.options = {
             ...this.options,
             // Animation parameters
-            duration: 15000, // 15 seconds to complete journey
+            duration: 20000, // 30 seconds to complete journey
             intensity: 8, // Quadratic acceleration intensity (higher = more dramatic)
             // Scale parameters
             minScale: 0.3,
             maxScale: 10.0,
+            // Randomized scale parameters for depth effect
+            minRandomScale: 8.0,  // Minimum random end scale
+            maxRandomScale: 25.0, // Maximum random end scale for very close messages
             // Opacity parameters
             fadeInThreshold: 0.02, // Quick fade in during first 2% of journey
             // Brightness parameters
             minBrightness: 0.6, // Dark at center (60% brightness)
-            maxBrightness: 1.0, // Full brightness at edge
+            maxBrightness: 0.9, // Full brightness at edge
             // Performance parameters
-            maxStars: 150,
+            maxStars: 200,
             ...options
         };
 
@@ -140,7 +143,7 @@ class StarfieldVisualization extends BaseVisualization {
                     url('stars.jpg') ${centerXPercent}% ${centerYPercent}%/cover no-repeat;
                 background-size: 100% 100%;
                 z-index: 0 !important;
-                animation: starfieldZoom 20s linear infinite;
+                animation: starfieldZoom 25s linear infinite;
                 will-change: transform, opacity;
                 backface-visibility: hidden;
                 transform: translateZ(0);
@@ -157,7 +160,7 @@ class StarfieldVisualization extends BaseVisualization {
                 background: black;
                 z-index: 0 !important;
                 opacity: 0;
-                animation: starfieldBlackout 20s linear infinite;
+                animation: starfieldBlackout 25s linear infinite;
                 pointer-events: none;
             }
 
@@ -166,34 +169,39 @@ class StarfieldVisualization extends BaseVisualization {
                     background-size: 100% 100%;
                     background-position: ${centerXPercent}% ${centerYPercent}%;
                 }
-                94% {
-                    background-size: 200% 200%;
-                    background-position: ${centerXPercent}% ${centerYPercent}%;
-                }
-                96% {
-                    background-size: 200% 200%;
-                    background-position: ${centerXPercent}% ${centerYPercent}%;
-                }
-                96.1% {
-                    background-size: 100% 100%;
-                    background-position: ${centerXPercent}% ${centerYPercent}%;
-                }
                 100% {
-                    background-size: 100% 100%;
+                    background-size: 300% 300%;
                     background-position: ${centerXPercent}% ${centerYPercent}%;
                 }
             }
 
             @keyframes starfieldBlackout {
-                0% { opacity: 0; }
-                93% { opacity: 0; }
-                95% { opacity: 1; }
-                97% { opacity: 0; }
-                100% { opacity: 0; }
+                0% { opacity: 1; }
+                4% { opacity: 0; }
+                96% { opacity: 0; }
+                100% { opacity: 1; }
             }
         `;
         document.head.appendChild(style);
         console.log('StarfieldVisualization: Added CSS override for background');
+    }
+
+    /**
+     * Remove starfield background CSS and class
+     */
+    removeStarfieldBackground() {
+        // Remove the CSS style
+        const existingStyle = document.getElementById('starfield-override-css');
+        if (existingStyle) {
+            existingStyle.remove();
+            console.log('StarfieldVisualization: Removed CSS override for background');
+        }
+
+        // Remove starfield-mode class from container
+        if (this.container && this.container.classList.contains('starfield-mode')) {
+            this.container.classList.remove('starfield-mode');
+            console.log('StarfieldVisualization: Removed starfield-mode class');
+        }
     }
 
     /**
@@ -290,9 +298,17 @@ class StarfieldVisualization extends BaseVisualization {
      * Deactivate the starfield visualization
      */
     deactivate() {
-        super.deactivate();
         this.isRunning = false;
+        this.removeStarfieldBackground();
         this.cleanup();
+
+        // Explicitly reset color legend
+        if (this.colorLegend) {
+            this.colorLegend.reset();
+        }
+
+        // Let base class handle color legend and performance reset
+        super.deactivate();
         console.log('StarfieldVisualization: Deactivated');
     }
 
@@ -318,6 +334,10 @@ class StarfieldVisualization extends BaseVisualization {
         // Create star data
         const starId = `star-${this.starIdCounter++}`;
 
+        // Generate random end scale for depth effect
+        const randomEndScale = this.options.minRandomScale +
+            Math.random() * (this.options.maxRandomScale - this.options.minRandomScale);
+
         const star = {
             id: starId,
             customer: customer,
@@ -334,6 +354,10 @@ class StarfieldVisualization extends BaseVisualization {
             // Animation state
             startTime: Date.now(),
             currentDistance: 0,
+
+            // Scale properties for depth effect
+            randomEndScale: randomEndScale,
+
 
             // Visual properties (will be calculated during animation)
             x: this.centerX,
@@ -383,18 +407,28 @@ class StarfieldVisualization extends BaseVisualization {
         // Add hover effects
         starGroup
             .on('mouseenter', function() {
-                d3.select(this).select('.star-main')
+                const group = d3.select(this);
+                group.select('.star-main')
                     .transition()
                     .duration(150)
-                    .attr('r', d => d.scale * 35)
-                    .style('filter', 'brightness(1.2) drop-shadow(0 0 10px currentColor)');
+                    .attr('r', star.scale * 35);
+                group.select('.star-glow')
+                    .transition()
+                    .duration(150)
+                    .attr('r', star.scale * 60)
+                    .attr('opacity', star.opacity * 0.68);
             })
             .on('mouseleave', function() {
-                d3.select(this).select('.star-main')
+                const group = d3.select(this);
+                group.select('.star-main')
                     .transition()
                     .duration(150)
-                    .attr('r', d => d.scale * 30)
-                    .style('filter', `brightness(${star.brightness}) drop-shadow(2px 2px 4px rgba(0,0,0,0.3))`);
+                    .attr('r', star.scale * 30);
+                group.select('.star-glow')
+                    .transition()
+                    .duration(150)
+                    .attr('r', star.scale * 50)
+                    .attr('opacity', star.opacity * 0.51);
             });
     }
 
@@ -402,29 +436,47 @@ class StarfieldVisualization extends BaseVisualization {
      * Create visual elements for a star
      */
     createStarElements(starGroup, star) {
-        // Main star circle
-        starGroup.append('circle')
-            .attr('class', 'star-main')
-            .attr('r', star.scale * 30)
-            .attr('fill', star.color)
-            .attr('opacity', star.opacity)
-            .style('filter', `brightness(${star.brightness}) drop-shadow(2px 2px 4px rgba(0,0,0,0.3))`);
+        // Create simple radial gradient for subtle 3D effect
+        const gradientId = `orb-gradient-${star.id}`;
+        const defs = starGroup.append('defs');
+        const radialGradient = defs.append('radialGradient')
+            .attr('id', gradientId)
+            .attr('cx', '35%')
+            .attr('cy', '35%');
 
-        // Inner bright core
-        starGroup.append('circle')
-            .attr('class', 'star-core')
-            .attr('r', star.scale * 15)
-            .attr('fill', 'white')
-            .attr('opacity', star.opacity * 0.8);
+        // Moderate gradient for balanced 3D effect
+        radialGradient.append('stop')
+            .attr('offset', '0%')
+            .attr('stop-color', d3.color(star.color).brighter(0.6));
 
-        // Outer glow
+        radialGradient.append('stop')
+            .attr('offset', '70%')
+            .attr('stop-color', star.color);
+
+        radialGradient.append('stop')
+            .attr('offset', '100%')
+            .attr('stop-color', d3.color(star.color).darker(0.75));
+
+        // Outer atmospheric glow (render first - behind orb) - centered at (0,0)
         starGroup.append('circle')
             .attr('class', 'star-glow')
+            .attr('cx', 0)
+            .attr('cy', 0)
             .attr('r', star.scale * 50)
             .attr('fill', 'none')
             .attr('stroke', star.color)
-            .attr('stroke-width', 2)
-            .attr('opacity', star.opacity * 0.3);
+            .attr('stroke-width', 4)
+            .attr('opacity', star.opacity * 0.51)
+            .style('filter', `blur(4px)`);
+
+        // Main orb with subtle gradient shading
+        starGroup.append('circle')
+            .attr('class', 'star-main')
+            .attr('cx', 0)
+            .attr('cy', 0)
+            .attr('r', star.scale * 30)
+            .attr('fill', `url(#${gradientId})`)
+            .attr('opacity', star.opacity);
 
         // Device label (only visible when star is large enough)
         if (star.deviceId && star.scale > 0.5) {
@@ -463,19 +515,14 @@ class StarfieldVisualization extends BaseVisualization {
             // Update visual position and properties
             starElement.attr('transform', `translate(${star.x}, ${star.y})`);
 
-            // Update star elements
+            // Update orb elements
             starElement.select('.star-main')
                 .attr('r', star.scale * 30)
-                .attr('opacity', star.opacity)
-                .style('filter', `brightness(${star.brightness}) drop-shadow(2px 2px 4px rgba(0,0,0,0.3))`);
-
-            starElement.select('.star-core')
-                .attr('r', star.scale * 15)
-                .attr('opacity', star.opacity * 0.8);
+                .attr('opacity', star.opacity);
 
             starElement.select('.star-glow')
                 .attr('r', star.scale * 50)
-                .attr('opacity', star.opacity * 0.3);
+                .attr('opacity', star.opacity * 0.51);
 
             // Update label if it exists
             const label = starElement.select('.star-label');
@@ -497,6 +544,7 @@ class StarfieldVisualization extends BaseVisualization {
         animate();
     }
 
+
     /**
      * Calculate current star state based on elapsed time
      */
@@ -510,9 +558,9 @@ class StarfieldVisualization extends BaseVisualization {
         const currentX = star.centerX + (star.directionX * currentDistance);
         const currentY = star.centerY + (star.directionY * currentDistance);
 
-        // Calculate scale based on distance (further = bigger)
+        // Calculate scale based on distance (further = bigger) with randomized end scale
         const distanceRatio = Math.min(currentDistance / this.maxDistance, 1);
-        const scale = this.options.minScale + (distanceRatio * distanceRatio * (this.options.maxScale - this.options.minScale));
+        const scale = this.options.minScale + (distanceRatio * distanceRatio * (star.randomEndScale - this.options.minScale));
 
         // Calculate opacity: fade in quickly during first part of animation
         let opacity;
@@ -567,15 +615,20 @@ class StarfieldVisualization extends BaseVisualization {
      * Clean up all stars and animations
      */
     cleanup() {
-        // Remove starfield background
+        // Stop all animations and clear data
+        this.isRunning = false;
 
         // Clean up D3 elements
         if (this.starsGroup) {
             this.starsGroup.selectAll('.star').remove();
         }
 
+        // Clear all star data
         this.starData = [];
         this.starIdCounter = 0;
+
+        // Remove any lingering background effects
+        this.removeStarfieldBackground();
 
         console.log('StarfieldVisualization: Cleanup completed');
         super.cleanup();
@@ -603,6 +656,7 @@ class StarfieldVisualization extends BaseVisualization {
                     .transition()
                     .duration(300)
                     .attr('stroke', newColor);
+
             }
         });
     }
@@ -628,8 +682,8 @@ class StarfieldVisualization extends BaseVisualization {
      * Destroy the starfield visualization
      */
     destroy() {
-        // Stop background animation
-
+        // Ensure complete cleanup
+        this.removeStarfieldBackground();
         this.cleanup();
 
         if (this.resizeHandler) {
