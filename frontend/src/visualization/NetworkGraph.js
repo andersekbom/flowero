@@ -405,11 +405,8 @@ class NetworkGraph extends BaseVisualization {
         // Get or create topic node
         const topicNode = this.getOrCreateTopicNode(topic, customer, customerColor);
 
-        // Create pulse animations
-        this.createPulse(this.brokerNode, customerNode);
-        setTimeout(() => {
-            this.createPulse(customerNode, topicNode);
-        }, 200);
+        // Create sequential pulse animation
+        this.createSequentialPulse(this.brokerNode, customerNode, topicNode, customerColor);
 
         // Update activity timestamps
         customerNode.lastActivity = Date.now();
@@ -644,18 +641,43 @@ class NetworkGraph extends BaseVisualization {
     }
 
     /**
-     * Create pulse animation between nodes
+     * Create sequential pulse animation: Broker → Customer → Topic
+     */
+    createSequentialPulse(brokerNode, customerNode, topicNode, color) {
+        if (!brokerNode || !customerNode || !topicNode) return;
+
+        const phaseDuration = 750; // 750ms per phase (faster than original 1500ms)
+
+        // Phase 1: Broker → Customer
+        const pulse1 = this.createPulseElement(brokerNode, color);
+        pulse1.transition()
+            .duration(phaseDuration)
+            .ease(d3.easeQuadOut)
+            .attr('cx', customerNode.x)
+            .attr('cy', customerNode.y)
+            .on('end', () => {
+                // Phase 2: Customer → Topic
+                const pulse2 = this.createPulseElement(customerNode, color);
+                pulse2.transition()
+                    .duration(phaseDuration)
+                    .ease(d3.easeQuadOut)
+                    .attr('cx', topicNode.x)
+                    .attr('cy', topicNode.y)
+                    .style('opacity', 0)
+                    .on('end', () => pulse2.remove());
+
+                // Clean up first pulse
+                pulse1.remove();
+            });
+    }
+
+    /**
+     * Create pulse animation between nodes (legacy method for compatibility)
      */
     createPulse(fromNode, toNode) {
         if (!fromNode || !toNode) return;
 
-        const pulse = this.pulseGroups.append('circle')
-            .attr('r', this.options.pulseRadius)
-            .attr('cx', fromNode.x)
-            .attr('cy', fromNode.y)
-            .attr('fill', fromNode.color)
-            .attr('opacity', 0.8);
-
+        const pulse = this.createPulseElement(fromNode, fromNode.color);
         pulse.transition()
             .duration(this.options.pulseDuration)
             .ease(d3.easeQuadOut)
@@ -663,6 +685,19 @@ class NetworkGraph extends BaseVisualization {
             .attr('cy', toNode.y)
             .style('opacity', 0)
             .on('end', () => pulse.remove());
+    }
+
+    /**
+     * Create a pulse element with consistent styling
+     */
+    createPulseElement(fromNode, color) {
+        return this.pulseGroups.append('circle')
+            .attr('r', this.options.pulseRadius * 0.7) // 30% smaller
+            .attr('cx', fromNode.x)
+            .attr('cy', fromNode.y)
+            .attr('fill', color)
+            .attr('opacity', 0.4) // 50% more transparent (0.8 * 0.5 = 0.4)
+            .style('filter', 'drop-shadow(0 0 4px rgba(255,255,255,0.5))'); // Subtle glow
     }
 
     /**
