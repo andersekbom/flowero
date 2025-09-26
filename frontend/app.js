@@ -25,6 +25,7 @@ import ColorLegend from './src/ui/ColorLegend.js';
 import { BaseVisualization, CircleRenderer } from './src/visualization/BaseVisualization.js';
 import BubbleAnimation from './src/visualization/BubbleAnimation.js';
 import NetworkGraph from './src/visualization/NetworkGraph.js';
+import StarfieldVisualization from './src/visualization/StarfieldVisualization.js';
 
 /**
  * Unified Container System - Single SVG container for all visualization modes
@@ -2278,6 +2279,14 @@ class MQTTVisualizer {
         this.networkGraph.initialize();
         console.log('🌐 NetworkGraph initialization complete');
 
+        // Initialize Starfield Visualization System
+        console.log('🌟 Creating StarfieldVisualization instance...');
+        this.starfieldVisualization = new StarfieldVisualization(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🌟 StarfieldVisualization created:', this.starfieldVisualization);
+        console.log('🌟 Calling initialize()...');
+        this.starfieldVisualization.initialize();
+        console.log('🌟 StarfieldVisualization initialization complete');
+
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
 
@@ -2515,6 +2524,10 @@ class MQTTVisualizer {
                 // For network mode, get count from NetworkGraph
                 const state = this.networkGraph.getState();
                 activeCards = state.activeNodes || 0;
+            } else if (this.visualizationMode === 'starfield' && this.starfieldVisualization) {
+                // For starfield mode, get count from StarfieldVisualization
+                const state = this.starfieldVisualization.getState();
+                activeCards = state.activeStars || 0;
             } else {
                 // For other modes, use unified element tracker
                 activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
@@ -2617,6 +2630,18 @@ class MQTTVisualizer {
                 timestamp: messageData.timestamp,
                 mode: 'network'
             });
+        } else if (this.visualizationMode === 'starfield' && this.starfieldVisualization) {
+            console.log('🌟 Routing message to StarfieldVisualization system:', messageData);
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+            // Send message to starfield visualization system
+            this.starfieldVisualization.addMessage(messageData);
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'starfield'
+            });
         } else {
             // Route to other visualization modes (legacy)
             this.createVisualization(messageData);
@@ -2642,8 +2667,6 @@ class MQTTVisualizer {
             this.updateClusters(messageData);
         } else if (this.visualizationMode === 'radial') {
             this.createD3RadialBubble(messageData);
-        } else if (this.visualizationMode === 'starfield') {
-            this.createMessageBubble(messageData);
         }
         // Note: bubbles mode is now handled by BubbleAnimation component via handleMQTTMessage
     }
@@ -5030,6 +5053,9 @@ class MQTTVisualizer {
         if (mode !== 'network' && this.networkGraph) {
             this.networkGraph.deactivate();
         }
+        if (mode !== 'starfield' && this.starfieldVisualization) {
+            this.starfieldVisualization.deactivate();
+        }
 
         // Enable the requested mode
         if (mode === 'bubbles') {
@@ -5051,6 +5077,16 @@ class MQTTVisualizer {
             this.updateVisualizationButtonStates(mode);
 
             console.log('Network mode activated successfully');
+            return true;
+        } else if (mode === 'starfield') {
+            // Activate the starfield visualization system
+            this.starfieldVisualization.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Starfield mode activated successfully');
             return true;
         }
 

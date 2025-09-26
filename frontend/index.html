@@ -312,15 +312,15 @@
 
         .header {
             padding: 20px;
-            background: rgba(0, 0, 0, 0.2);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
         }
 
         .message-flow {
             flex: 1;
             position: relative;
             overflow: visible;
-            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+            background: radial-gradient(circle at center, var(--input-bg) 0%, transparent 70%);
             /* Improve rendering performance */
             will-change: auto;
             /* contain: layout style paint; - DISABLED for radial mode debugging */
@@ -969,7 +969,7 @@
             
             <!-- Visualization icons for collapsed sidebar -->
             <div class="visualization-icons">
-                <div class="viz-icon-btn" data-mode="bubbles" data-tooltip="Falling Bubbles">
+                <div class="viz-icon-btn" data-mode="bubbles" data-tooltip="Falling Bubbles - D3 Powered">
                     <svg viewBox="0 0 24 24">
                         <circle cx="6" cy="6" r="3"/>
                         <circle cx="18" cy="12" r="3"/>
@@ -977,14 +977,14 @@
                         <circle cx="8" cy="14" r="2"/>
                     </svg>
                 </div>
-                <div class="viz-icon-btn active" data-mode="radial" data-tooltip="Radial Burst">
+                <div class="viz-icon-btn disabled" data-mode="radial" data-tooltip="Radial Burst - Refactoring in progress" style="opacity: 0.3; pointer-events: none;">
                     <svg viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
                         <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
                         <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
                     </svg>
                 </div>
-                <div class="viz-icon-btn disabled" data-mode="starfield" data-tooltip="Starfield" style="opacity: 0.3; pointer-events: none;">
+                <div class="viz-icon-btn" data-mode="starfield" data-tooltip="Starfield Mode">
                     <svg viewBox="0 0 24 24">
                         <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26"/>
                         <circle cx="19" cy="5" r="1"/>
@@ -993,7 +993,7 @@
                         <circle cx="4" cy="19" r="1"/>
                     </svg>
                 </div>
-                <div class="viz-icon-btn" data-mode="network" data-tooltip="Network Graph">
+                <div class="viz-icon-btn" data-mode="network" data-tooltip="Network Graph - Force-directed connections">
                     <svg viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="3" fill="currentColor"/>
                         <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -1006,7 +1006,7 @@
                         <line x1="12" y1="12" x2="18" y2="18" stroke="currentColor" stroke-width="1"/>
                     </svg>
                 </div>
-                <div class="viz-icon-btn" data-mode="clusters" data-tooltip="Clustered Bubbles">
+                <div class="viz-icon-btn disabled" data-mode="clusters" data-tooltip="Clustered Bubbles - Refactoring in progress" style="opacity: 0.3; pointer-events: none;">
                     <svg viewBox="0 0 24 24">
                         <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.8"/>
                         <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.6"/>
@@ -1044,8 +1044,39 @@
                     <label for="password">Password (Optional)</label>
                     <input type="password" id="password" placeholder="password">
                 </div>
-                
-                <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="ssl" onchange="toggleSSLOptions()">
+                        Use SSL/TLS (MQTTS)
+                    </label>
+                </div>
+
+                <div id="sslOptions" style="display: none;">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="tlsVerify" checked>
+                            Verify server certificate
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="caCert">CA Certificate (Optional)</label>
+                        <textarea id="caCert" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="clientCert">Client Certificate (Optional)</label>
+                        <textarea id="clientCert" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="clientKey">Client Private Key (Optional)</label>
+                        <textarea id="clientKey" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <button id="connectBtn" onclick="console.log('BUTTON CLICKED!'); toggleConnection()">Connect</button>
             </div>
 
             <div class="connection-form">
@@ -1067,17 +1098,17 @@
                             <circle cx="12" cy="18" r="3"/>
                             <circle cx="8" cy="14" r="2"/>
                         </svg>
-                        <span>Falling Bubbles</span>
+                        <span>Falling Bubbles (D3)</span>
                     </div>
-                    <div class="viz-mode-btn active" data-mode="radial">
+                    <div class="viz-mode-btn disabled" data-mode="radial" style="opacity: 0.3; pointer-events: none;">
                         <svg viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
                             <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
                             <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
                         </svg>
-                        <span>Radial Burst</span>
+                        <span>Radial Burst - Refactoring</span>
                     </div>
-                    <div class="viz-mode-btn disabled" data-mode="starfield" style="opacity: 0.3; pointer-events: none;">
+                    <div class="viz-mode-btn" data-mode="starfield">
                         <svg viewBox="0 0 24 24">
                             <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26"/>
                             <circle cx="19" cy="5" r="1"/>
@@ -1085,7 +1116,7 @@
                             <circle cx="20" cy="18" r="1"/>
                             <circle cx="4" cy="19" r="1"/>
                         </svg>
-                        <span>Starfield</span>
+                        <span>Starfield Mode</span>
                     </div>
                     <div class="viz-mode-btn" data-mode="network">
                         <svg viewBox="0 0 24 24">
@@ -1101,7 +1132,7 @@
                         </svg>
                         <span>Network Graph</span>
                     </div>
-                    <div class="viz-mode-btn" data-mode="clusters">
+                    <div class="viz-mode-btn disabled" data-mode="clusters" style="opacity: 0.3; pointer-events: none;">
                         <svg viewBox="0 0 24 24">
                             <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.8"/>
                             <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.6"/>
@@ -1110,7 +1141,7 @@
                             <circle cx="16" cy="12" r="2" fill="currentColor" opacity="0.6"/>
                             <circle cx="20" cy="12" r="2" fill="currentColor" opacity="0.6"/>
                         </svg>
-                        <span>Clustered Bubbles</span>
+                        <span>Clustered Bubbles - Refactoring</span>
                     </div>
                 </div>
             </div>
@@ -1218,6 +1249,6 @@
     </div>
 
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
