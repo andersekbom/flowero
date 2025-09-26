@@ -49,9 +49,6 @@ class StarfieldVisualization extends BaseVisualization {
         // Animation state
         this.isRunning = false;
 
-        // Background animation
-        this.starfieldBackground = null;
-        this.animationFrameId = null;
     }
 
     /**
@@ -87,13 +84,11 @@ class StarfieldVisualization extends BaseVisualization {
         if (existingSvg) {
             existingSvg.remove();
         }
-        this.removeStarfieldBackground();
 
         // Get container dimensions
         const rect = this.container.getBoundingClientRect();
 
-        // Create animated starfield background
-        this.createStarfieldBackground();
+        // The animated starfield background is handled by CSS when starfield-mode class is added
 
         // Create SVG with D3
         this.svg = d3.select(this.container)
@@ -105,7 +100,7 @@ class StarfieldVisualization extends BaseVisualization {
             .style('top', '0')
             .style('left', '0')
             .style('pointer-events', 'auto')
-            .style('z-index', '10')
+            .style('z-index', '1')
             .style('background', 'transparent');
 
         // Create groups for organization
@@ -116,89 +111,89 @@ class StarfieldVisualization extends BaseVisualization {
     }
 
     /**
-     * Create animated starfield background
+     * Add CSS override to ensure starfield background is visible
      */
-    createStarfieldBackground() {
-        // Create background element
-        this.starfieldBackground = document.createElement('div');
-        this.starfieldBackground.className = 'starfield-background';
+    addStarfieldCSS() {
+        // Check if our override CSS is already added
+        if (document.getElementById('starfield-override-css')) {
+            return;
+        }
 
-        // Apply styles for the moving starfield
-        Object.assign(this.starfieldBackground.style, {
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            right: '0',
-            bottom: '0',
-            background: `
-                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-                url('stars.jpg') center/cover no-repeat
-            `,
-            backgroundSize: '100% 100%',
-            zIndex: '-1',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-            transform: 'translateZ(0)'
-        });
+        // Calculate center point for background zoom
+        const sidebarOffset = this.getSidebarOffset();
+        const rect = this.container.getBoundingClientRect();
+        const centerXPercent = ((rect.width + sidebarOffset) / 2) / rect.width * 100;
+        const centerYPercent = 50; // Always center vertically
 
-        // Add to container
-        this.container.appendChild(this.starfieldBackground);
-
-        // Start the zoom animation
-        this.startStarfieldAnimation();
-
-        console.log('StarfieldVisualization: Starfield background created');
-    }
-
-    /**
-     * Start the starfield zoom animation
-     */
-    startStarfieldAnimation() {
-        if (!this.starfieldBackground) return;
-
-        const duration = 20000; // 20 seconds per cycle
-        let startTime = Date.now();
-
-        const animate = () => {
-            if (!this.isRunning || !this.starfieldBackground) return;
-
-            const elapsed = Date.now() - startTime;
-            const progress = (elapsed % duration) / duration; // 0 to 1
-
-            // Calculate zoom level based on progress
-            let zoom;
-            if (progress < 0.94) {
-                // Gradual zoom from 100% to 200% over 94% of the cycle
-                zoom = 100 + (progress / 0.94) * 100;
-            } else if (progress < 0.96) {
-                // Hold at 200% for a brief moment (2% of cycle)
-                zoom = 200;
-            } else {
-                // Quick reset back to 100% (remaining 4% of cycle)
-                zoom = 100;
+        const style = document.createElement('style');
+        style.id = 'starfield-override-css';
+        style.textContent = `
+            .message-flow.starfield-mode::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background:
+                    linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                    url('stars.jpg') ${centerXPercent}% ${centerYPercent}%/cover no-repeat;
+                background-size: 100% 100%;
+                z-index: 0 !important;
+                animation: starfieldZoom 20s linear infinite;
+                will-change: transform, opacity;
+                backface-visibility: hidden;
+                transform: translateZ(0);
+                pointer-events: none;
             }
 
-            this.starfieldBackground.style.backgroundSize = `${zoom}% ${zoom}%`;
+            .message-flow.starfield-mode::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: black;
+                z-index: 0 !important;
+                opacity: 0;
+                animation: starfieldBlackout 20s linear infinite;
+                pointer-events: none;
+            }
 
-            this.animationFrameId = requestAnimationFrame(animate);
-        };
+            @keyframes starfieldZoom {
+                0% {
+                    background-size: 100% 100%;
+                    background-position: ${centerXPercent}% ${centerYPercent}%;
+                }
+                94% {
+                    background-size: 200% 200%;
+                    background-position: ${centerXPercent}% ${centerYPercent}%;
+                }
+                96% {
+                    background-size: 200% 200%;
+                    background-position: ${centerXPercent}% ${centerYPercent}%;
+                }
+                96.1% {
+                    background-size: 100% 100%;
+                    background-position: ${centerXPercent}% ${centerYPercent}%;
+                }
+                100% {
+                    background-size: 100% 100%;
+                    background-position: ${centerXPercent}% ${centerYPercent}%;
+                }
+            }
 
-        this.animationFrameId = requestAnimationFrame(animate);
-    }
-
-    /**
-     * Remove starfield background
-     */
-    removeStarfieldBackground() {
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
-        if (this.starfieldBackground && this.starfieldBackground.parentNode) {
-            this.starfieldBackground.parentNode.removeChild(this.starfieldBackground);
-        }
-        this.starfieldBackground = null;
+            @keyframes starfieldBlackout {
+                0% { opacity: 0; }
+                93% { opacity: 0; }
+                95% { opacity: 1; }
+                97% { opacity: 0; }
+                100% { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+        console.log('StarfieldVisualization: Added CSS override for background');
     }
 
     /**
@@ -206,13 +201,20 @@ class StarfieldVisualization extends BaseVisualization {
      */
     updateDimensions() {
         const rect = this.container.getBoundingClientRect();
-        this.centerX = rect.width / 2;
-        this.centerY = rect.height / 2;
+
+        // Calculate true center of viewport, accounting for sidebar
+        const sidebarOffset = this.getSidebarOffset();
+        const viewportWidth = rect.width;
+        const viewportHeight = rect.height;
+
+        // Center point should be in the middle of the visible area (not including sidebar)
+        this.centerX = (viewportWidth + sidebarOffset) / 2;
+        this.centerY = viewportHeight / 2;
 
         // Calculate max distance (center to corner + buffer for star size)
         const maxScreenDistance = Math.sqrt(
-            (rect.width / 2) * (rect.width / 2) +
-            (rect.height / 2) * (rect.height / 2)
+            (viewportWidth / 2) * (viewportWidth / 2) +
+            (viewportHeight / 2) * (viewportHeight / 2)
         );
 
         // Add buffer for maximum star size
@@ -223,8 +225,21 @@ class StarfieldVisualization extends BaseVisualization {
         console.log('StarfieldVisualization: Dimensions updated', {
             centerX: this.centerX,
             centerY: this.centerY,
+            sidebarOffset: sidebarOffset,
             maxDistance: this.maxDistance
         });
+    }
+
+    /**
+     * Get sidebar offset to calculate proper center point
+     */
+    getSidebarOffset() {
+        // Try to get sidebar width from the DOM or event emitter
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            return sidebar.offsetWidth || 0;
+        }
+        return 0;
     }
 
     /**
@@ -240,13 +255,6 @@ class StarfieldVisualization extends BaseVisualization {
                     .attr('height', rect.height);
             }
 
-            // Update background size if it exists
-            if (this.starfieldBackground) {
-                Object.assign(this.starfieldBackground.style, {
-                    right: '0',
-                    bottom: '0'
-                });
-            }
 
             this.updateDimensions();
         };
@@ -262,7 +270,20 @@ class StarfieldVisualization extends BaseVisualization {
         super.activate();
         this.isRunning = true;
         this.updateDimensions();
+
+        // Debug: Check if container has starfield-mode class
         console.log('StarfieldVisualization: Activated');
+        console.log('Container classes:', this.container.className);
+        console.log('Container has starfield-mode:', this.container.classList.contains('starfield-mode'));
+
+        // Force add the class if it's missing (temporary debug)
+        if (!this.container.classList.contains('starfield-mode')) {
+            console.log('Adding starfield-mode class manually for debugging');
+            this.container.classList.add('starfield-mode');
+        }
+
+        // Add CSS override to fix z-index issue
+        this.addStarfieldCSS();
     }
 
     /**
@@ -547,7 +568,6 @@ class StarfieldVisualization extends BaseVisualization {
      */
     cleanup() {
         // Remove starfield background
-        this.removeStarfieldBackground();
 
         // Clean up D3 elements
         if (this.starsGroup) {
@@ -609,7 +629,6 @@ class StarfieldVisualization extends BaseVisualization {
      */
     destroy() {
         // Stop background animation
-        this.removeStarfieldBackground();
 
         this.cleanup();
 
