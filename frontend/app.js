@@ -26,6 +26,7 @@ import { BaseVisualization, CircleRenderer } from './src/visualization/BaseVisua
 import BubbleAnimation from './src/visualization/BubbleAnimation.js';
 import NetworkGraph from './src/visualization/NetworkGraph.js';
 import StarfieldVisualization from './src/visualization/StarfieldVisualization.js';
+import RadialVisualization from './src/visualization/RadialVisualization.js';
 
 /**
  * Unified Container System - Single SVG container for all visualization modes
@@ -143,8 +144,7 @@ class UnifiedContainer {
         // Remove all existing visualization containers
         const existingContainers = [
             '#d3-bubbles',
-            '#d3-network', 
-            '#d3-radial-svg',
+            '#d3-network',
             '#unified-visualization'
         ];
         
@@ -156,7 +156,7 @@ class UnifiedContainer {
         });
         
         // Clear DOM message bubbles
-        const bubbles = this.parentElement.querySelectorAll('.message-bubble, .radial-message-bubble');
+        const bubbles = this.parentElement.querySelectorAll('.message-bubble');
         bubbles.forEach(bubble => bubble.remove());
     }
 }
@@ -408,314 +408,7 @@ class LinearAnimation {
     }
 }
 
-class RadialAnimation {
-    constructor(centerX, centerY, options = {}) {
-        this.centerX = centerX;
-        this.centerY = centerY;
-        
-        // Default options
-        this.options = {
-            duration: 8000,
-            fadeStartPoint: 0.2, // Start fading at 20% of journey
-            elementSize: { width: 50, height: 50 },
-            buffer: 300, // Increased buffer to ensure cleanup at screen edges
-            ...options
-        };
-        
-        // Generate random direction for this animation
-        this.angle = Math.random() * 2 * Math.PI;
-        this.directionX = Math.cos(this.angle);
-        this.directionY = Math.sin(this.angle);
-    }
-    
-    // Calculate max distance based on container dimensions
-    calculateMaxDistance(containerWidth, containerHeight) {
-        // Distance from center to corner of screen (furthest any element needs to travel)
-        const maxScreenDistance = Math.sqrt(
-            (containerWidth / 2) * (containerWidth / 2) + 
-            (containerHeight / 2) * (containerHeight / 2)
-        );
-        
-        // Add buffer to ensure elements move completely off screen
-        const elementMaxSize = this.options.elementSize.width + this.options.buffer;
-        const buffer = elementMaxSize / 2;
-        
-        return maxScreenDistance + buffer;
-    }
-    
-    // Calculate current position and opacity based on elapsed time
-    calculateState(elapsed, containerWidth, containerHeight) {
-        const maxDistance = this.calculateMaxDistance(containerWidth, containerHeight);
-        const timeRatio = Math.min(elapsed / this.options.duration, 1);
-        const currentDistance = timeRatio * maxDistance;
-        
-        // Position based on distance and direction
-        const currentX = this.centerX + (this.directionX * currentDistance);
-        const currentY = this.centerY + (this.directionY * currentDistance);
-        
-        // Calculate opacity with fade after fadeStartPoint
-        let opacity = 1.0;
-        if (timeRatio > this.options.fadeStartPoint) {
-            const fadeRatio = (timeRatio - this.options.fadeStartPoint) / (1 - this.options.fadeStartPoint);
-            opacity = Math.max(0, 1 - fadeRatio);
-        }
-        
-        return {
-            x: currentX,
-            y: currentY,
-            opacity: opacity,
-            progress: timeRatio,
-            distance: currentDistance,
-            isComplete: timeRatio >= 1
-        };
-    }
-    
-    // Check if element is off screen
-    isOffScreen(x, y, containerWidth, containerHeight) {
-        const buffer = this.options.buffer;
-        return (x < -buffer || x > containerWidth + buffer || 
-                y < -buffer || y > containerHeight + buffer);
-    }
-    
-    // Animate SVG element using requestAnimationFrame
-    animateSVGElement(svgGroup, containerWidth, containerHeight, onComplete = null) {
-        const startTime = Date.now();
-        
-        // Set initial position at center
-        svgGroup.attr('transform', `translate(${this.centerX}, ${this.centerY})`);
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const state = this.calculateState(elapsed, containerWidth, containerHeight);
-            
-            // Update position and opacity
-            svgGroup
-                .attr('transform', `translate(${state.x}, ${state.y})`)
-                .style('opacity', state.opacity);
-            
-            // Check if animation should continue
-            const shouldStop = state.isComplete || 
-                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight) ||
-                              !svgGroup.node() || !svgGroup.node().parentNode;
-            
-            if (!shouldStop) {
-                requestAnimationFrame(animate);
-            } else {
-                // Animation complete
-                if (onComplete) onComplete();
-            }
-        };
-        
-        animate();
-        
-        return {
-            angle: this.angle,
-            direction: { x: this.directionX, y: this.directionY }
-        };
-    }
-    
-    // Animate DOM element using requestAnimationFrame
-    animateDOMElement(element, containerWidth, containerHeight, onComplete = null) {
-        const startTime = Date.now();
-        const { width, height } = this.options.elementSize;
-        
-        // Set initial position at center (adjusted for element size)
-        element.style.left = `${this.centerX - width / 2}px`;
-        element.style.top = `${this.centerY - height / 2}px`;
-        element.style.opacity = '1';
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const state = this.calculateState(elapsed, containerWidth, containerHeight);
-            
-            // Update position and opacity (adjust for element center)
-            element.style.left = `${state.x - width / 2}px`;
-            element.style.top = `${state.y - height / 2}px`;
-            element.style.opacity = state.opacity;
-            
-            // Check if animation should continue
-            const shouldStop = state.isComplete || 
-                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight) ||
-                              !element.parentNode;
-            
-            if (!shouldStop) {
-                requestAnimationFrame(animate);
-            } else {
-                // Animation complete
-                if (onComplete) onComplete();
-            }
-        };
-        
-        animate();
-        
-        return {
-            angle: this.angle,
-            direction: { x: this.directionX, y: this.directionY }
-        };
-    }
-}
 
-class StarfieldAnimation {
-    constructor(centerX, centerY, options = {}) {
-        this.centerX = centerX;
-        this.centerY = centerY;
-        
-        // Default options
-        this.options = {
-            duration: 15000,
-            intensity: 8, // Higher = more dramatic acceleration
-            minScale: 0.3,
-            maxScale: 10.0,
-            fadeInThreshold: 0.02, // 2% of journey for quick fade in
-            elementSize: { width: 50, height: 50 },
-            buffer: 100,
-            ...options
-        };
-        
-        // Generate random direction for this animation
-        this.angle = Math.random() * 2 * Math.PI;
-        this.directionX = Math.cos(this.angle);
-        this.directionY = Math.sin(this.angle);
-    }
-    
-    // Calculate max distance based on container dimensions
-    calculateMaxDistance(containerWidth, containerHeight) {
-        // Distance from center to corner of screen (furthest any element needs to travel)
-        const maxScreenDistance = Math.sqrt(
-            (containerWidth / 2) * (containerWidth / 2) + 
-            (containerHeight / 2) * (containerHeight / 2)
-        );
-        
-        // Add buffer for element size and scaling
-        const elementMaxSize = this.options.elementSize.width * this.options.maxScale + this.options.buffer;
-        const buffer = elementMaxSize / 2;
-        
-        return maxScreenDistance + buffer;
-    }
-    
-    // Calculate current state with quadratic acceleration and scaling
-    calculateState(elapsed, containerWidth, containerHeight) {
-        const maxDistance = this.calculateMaxDistance(containerWidth, containerHeight);
-        const timeRatio = Math.min(elapsed / this.options.duration, 1);
-        
-        // Quadratic acceleration for starfield effect
-        const currentDistance = (Math.pow(timeRatio, this.options.intensity)) * maxDistance;
-        
-        // Position based on distance and direction
-        const currentX = this.centerX + (this.directionX * currentDistance);
-        const currentY = this.centerY + (this.directionY * currentDistance);
-        
-        // Calculate scale based on distance (further = bigger)
-        const distanceRatio = Math.min(currentDistance / maxDistance, 1);
-        const scale = this.options.minScale + (distanceRatio * distanceRatio * (this.options.maxScale - this.options.minScale));
-        
-        // Calculate opacity: fade in quickly during first part of animation
-        let opacity;
-        if (distanceRatio < this.options.fadeInThreshold) {
-            opacity = distanceRatio * (1 / this.options.fadeInThreshold); // Quick fade in
-        } else {
-            opacity = 1.0; // Full opacity after fade in
-        }
-        
-        return {
-            x: currentX,
-            y: currentY,
-            scale: scale,
-            opacity: opacity,
-            progress: timeRatio,
-            distance: currentDistance,
-            distanceRatio: distanceRatio,
-            isComplete: timeRatio >= 1
-        };
-    }
-    
-    // Check if element is off screen
-    isOffScreen(x, y, containerWidth, containerHeight, scale = 1) {
-        const buffer = this.options.buffer * scale; // Scale buffer with element
-        return (x < -buffer || x > containerWidth + buffer || 
-                y < -buffer || y > containerHeight + buffer);
-    }
-    
-    // Animate SVG element with quadratic acceleration and scaling
-    animateSVGElement(svgGroup, containerWidth, containerHeight, onComplete = null) {
-        const startTime = Date.now();
-        
-        // Set initial position at center with minimum scale and low opacity
-        svgGroup
-            .attr('transform', `translate(${this.centerX}, ${this.centerY}) scale(${this.options.minScale})`)
-            .style('opacity', 0.1);
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const state = this.calculateState(elapsed, containerWidth, containerHeight);
-            
-            // Update position, scale, and opacity
-            svgGroup
-                .attr('transform', `translate(${state.x}, ${state.y}) scale(${state.scale})`)
-                .style('opacity', state.opacity);
-            
-            // Check if animation should continue
-            const shouldStop = state.isComplete || 
-                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight, state.scale) ||
-                              !svgGroup.node() || !svgGroup.node().parentNode;
-            
-            if (!shouldStop) {
-                requestAnimationFrame(animate);
-            } else {
-                // Animation complete
-                if (onComplete) onComplete();
-            }
-        };
-        
-        animate();
-        
-        return {
-            angle: this.angle,
-            direction: { x: this.directionX, y: this.directionY }
-        };
-    }
-    
-    // Animate DOM element with quadratic acceleration and scaling
-    animateDOMElement(element, containerWidth, containerHeight, onComplete = null) {
-        const startTime = Date.now();
-        
-        // Set initial position at center with minimum scale and low opacity
-        element.style.left = `${this.centerX - this.options.elementSize.width / 2}px`;
-        element.style.top = `${this.centerY - this.options.elementSize.height / 2}px`;
-        element.style.transform = `scale(${this.options.minScale})`;
-        element.style.opacity = '0.1';
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const state = this.calculateState(elapsed, containerWidth, containerHeight);
-            
-            // Update position, scale, and opacity
-            element.style.left = `${state.x - this.options.elementSize.width / 2}px`;
-            element.style.top = `${state.y - this.options.elementSize.height / 2}px`;
-            element.style.transform = `scale(${state.scale})`;
-            element.style.opacity = state.opacity;
-            
-            // Check if animation should continue
-            const shouldStop = state.isComplete || 
-                              this.isOffScreen(state.x, state.y, containerWidth, containerHeight, state.scale) ||
-                              !element.parentNode;
-            
-            if (!shouldStop) {
-                requestAnimationFrame(animate);
-            } else {
-                // Animation complete
-                if (onComplete) onComplete();
-            }
-        };
-        
-        animate();
-        
-        return {
-            angle: this.angle,
-            direction: { x: this.directionX, y: this.directionY }
-        };
-    }
-}
 
 class ForceAnimation {
     constructor(container, nodes, links, options = {}) {
@@ -1665,8 +1358,7 @@ class UnifiedElementTracker {
             byType: {
                 radial: 0,
                 linear: 0,
-                network: 0,
-                starfield: 0
+                network: 0
             },
             byStatus: {
                 animating: 0,
@@ -1808,9 +1500,8 @@ class UnifiedElementTracker {
         this.counters.total = 0;
         this.counters.byType = {
             radial: 0,
-            linear: 0, 
-            network: 0,
-            starfield: 0
+            linear: 0,
+            network: 0
         };
         this.counters.byStatus = {
             animating: 0,
@@ -1874,8 +1565,7 @@ class UnifiedElementTracker {
         this.counters.byType = {
             radial: 0,
             linear: 0,
-            network: 0,
-            starfield: 0
+            network: 0
         };
         this.counters.byStatus = {
             animating: 0,
@@ -1950,8 +1640,7 @@ class ModeSwitchingManager {
             this.visualizer.elementTracker.reset();
         }
 
-        // Reset animation counters
-        this.visualizer.activeRadialAnimations = 0;
+        // Reset animation counters (legacy radial counters removed)
 
         // Clear color legend and visualization state
         this.visualizer.resetVisualizationState();
@@ -1990,7 +1679,7 @@ class ModeSwitchingManager {
         this.visualizer.domElements.messageFlow.classList.add(`${newMode}-mode`);
 
         // Initialize unified container for unified modes
-        if (['bubbles', 'radial', 'starfield'].includes(newMode)) {
+        if (['bubbles', 'starfield'].includes(newMode)) {
             this.initializeUnifiedMode(newMode);
         } else if (newMode === 'network') {
             this.initializeNetworkMode();
@@ -2006,7 +1695,7 @@ class ModeSwitchingManager {
         // Network mode dimensions are now handled by NetworkGraph component
     }
 
-    // Initialize unified container modes (bubbles, radial, starfield)
+    // Initialize unified container modes (bubbles, starfield)
     initializeUnifiedMode(mode) {
         // Initialize unified container if not exists
         if (!this.visualizer.unifiedContainer) {
@@ -2170,9 +1859,7 @@ class MQTTVisualizer {
         this.messageRate = 0;
         this.messageHistory = [];
         
-        // Performance tracking for radial mode
-        this.activeRadialAnimations = 0;
-        this.maxRadialAnimations = 200; // Limit concurrent animations
+        // Performance tracking (legacy radial counters removed)
         
         // Z-index tracking for depth layering
         this.messageZIndex = 1000; // Start with high z-index (newer cards will have lower values)
@@ -2286,6 +1973,14 @@ class MQTTVisualizer {
         console.log('🌟 Calling initialize()...');
         this.starfieldVisualization.initialize();
         console.log('🌟 StarfieldVisualization initialization complete');
+
+        // Initialize Radial Visualization System
+        console.log('🔴 Creating RadialVisualization instance...');
+        this.radialVisualization = new RadialVisualization(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🔴 RadialVisualization created:', this.radialVisualization);
+        console.log('🔴 Calling initialize()...');
+        this.radialVisualization.initialize();
+        console.log('🔴 RadialVisualization initialization complete');
 
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
@@ -2528,6 +2223,10 @@ class MQTTVisualizer {
                 // For starfield mode, get count from StarfieldVisualization
                 const state = this.starfieldVisualization.getState();
                 activeCards = state.activeStars || 0;
+            } else if (this.visualizationMode === 'radial' && this.radialVisualization) {
+                // For radial mode, get count from RadialVisualization
+                const state = this.radialVisualization.getState();
+                activeCards = state.activeElements || 0;
             } else {
                 // For other modes, use unified element tracker
                 activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
@@ -2642,6 +2341,18 @@ class MQTTVisualizer {
                 timestamp: messageData.timestamp,
                 mode: 'starfield'
             });
+        } else if (this.visualizationMode === 'radial' && this.radialVisualization) {
+            console.log('🔴 Routing message to RadialVisualization system:', messageData);
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+            // Send message to radial visualization system
+            this.radialVisualization.addMessage(messageData);
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'radial'
+            });
         } else {
             // Route to other visualization modes (legacy)
             this.createVisualization(messageData);
@@ -2665,10 +2376,8 @@ class MQTTVisualizer {
             this.updateNetworkGraph(messageData);
         } else if (this.visualizationMode === 'clusters') {
             this.updateClusters(messageData);
-        } else if (this.visualizationMode === 'radial') {
-            this.createD3RadialBubble(messageData);
-        }
         // Note: bubbles mode is now handled by BubbleAnimation component via handleMQTTMessage
+        }
     }
 
     // Message Animation - Optimized with object pooling
@@ -2689,25 +2398,11 @@ class MQTTVisualizer {
         };
         
         // Apply mode-specific styling
-        if (this.visualizationMode === 'starfield') {
-            // For starfield mode, add side-lighting gradient overlay (brightness handled dynamically during animation)
-            styles.background = `
-                linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0.4) 100%),
-                linear-gradient(135deg, ${color}, ${color}E6)
-            `;
-        } else if (this.visualizationMode === 'bubbles' || this.visualizationMode === 'radial') {
+        if (this.visualizationMode === 'bubbles') {
             // Start with full brightness, will be smoothly adjusted during animation
             styles.filter = 'brightness(1.0)';
             bubble.dataset.brightness = '1.0'; // Store initial brightness
-            
-            // Set initial scale based on mode
-            if (this.visualizationMode === 'radial') {
-                bubble.dataset.scale = '0.3'; // Start small for radial mode
-                styles.transform = 'scale(0.3)'; // Apply immediately
-            } else {
-                bubble.dataset.scale = '1.0'; // Normal scale for bubbles mode
-            }
-            
+            bubble.dataset.scale = '1.0'; // Normal scale for bubbles mode
             bubble.dataset.createdAt = Date.now().toString(); // Store creation time
         }
         
@@ -2734,42 +2429,17 @@ class MQTTVisualizer {
         const flowHeight = this.domElements.messageFlow.clientHeight;
         let startX, startY;
         
-        if (this.visualizationMode === 'radial') {
-            // Radial mode: start at center of screen
-            startX = flowWidth / 2;
-            startY = flowHeight / 2;
-        } else if (this.visualizationMode === 'starfield') {
-            // Starfield mode: start all cards at exact center
-            startX = flowWidth / 2;
-            startY = flowHeight / 2;
-        } else {
-            // Legacy bubbles mode: now handled by BubbleAnimation component
-            // This fallback should not be reached since bubbles mode uses BubbleAnimation
-            startX = flowWidth / 2;
-            startY = flowHeight / 2;
-            console.warn('createMessageBubble: Unexpected fallback to legacy bubbles mode');
-        }
-        
-        if (this.visualizationMode === 'radial') {
-            // For radial mode, set initial position and let animateMessage handle transitions
-            bubble.style.transition = 'none';
-            bubble.style.left = `${startX}px`;
-            bubble.style.top = `${startY}px`;
-            bubble.style.opacity = '1';
-            bubble.style.transform = 'scale(1)';
-        } else if (this.visualizationMode === 'starfield') {
-            // For starfield mode, start small and transparent
-            bubble.style.transition = 'none';
-            bubble.style.left = `${startX}px`;
-            bubble.style.top = `${startY}px`;
-            bubble.style.opacity = '0.1';
-            bubble.style.transform = 'scale(0.3)';
-        } else {
-            // For bubbles mode, disable transitions for manual animation
-            bubble.style.transition = 'none';
-            bubble.style.left = `${startX}px`;
-            bubble.style.top = `${startY}px`;
-        }
+        // Legacy bubbles mode: now handled by BubbleAnimation component
+        // This fallback should not be reached since bubbles mode uses BubbleAnimation
+        // Radial mode now handled by RadialVisualization component
+        startX = flowWidth / 2;
+        startY = flowHeight / 2;
+        console.warn('createMessageBubble: Unexpected fallback to legacy mode');
+
+        // For fallback bubbles mode, disable transitions for manual animation
+        bubble.style.transition = 'none';
+        bubble.style.left = `${startX}px`;
+        bubble.style.top = `${startY}px`;
         
         // Set z-index for depth layering (newer cards behind older ones)
         bubble.style.zIndex = this.messageZIndex;
@@ -2791,152 +2461,18 @@ class MQTTVisualizer {
     animateMessage(bubble, startX, startY) {
         const duration = 20000; // 20 seconds to cross screen
 
-        if (this.visualizationMode === 'radial') {
-            // No concurrent animation limit - test unlimited performance
-            this.activeRadialAnimations++;
-            
-            // Manual radial animation with random angles
-            const startTime = Date.now();
-            const angle = Math.random() * 2 * Math.PI;
-            const maxDistance = 600;
-            const targetX = startX + Math.cos(angle) * maxDistance;
-            const targetY = startY + Math.sin(angle) * maxDistance;
-            
-            const animate = () => {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // Animate straight outward in assigned direction
-                const currentX = startX + (targetX - startX) * progress;
-                const currentY = startY + (targetY - startY) * progress;
-                
-                // Calculate scaling based on progress (start small, grow larger)
-                const minScale = 0.3;
-                const maxScale = 1.5;
-                const scale = minScale + (progress * (maxScale - minScale));
-                
-                // Calculate fade based on progress
-                const fadeStartPoint = 0.2;
-                const opacity = progress < fadeStartPoint ? 1 : 
-                    Math.max(0, 1 - (progress - fadeStartPoint) / (1 - fadeStartPoint));
-                
-                bubble.style.left = `${currentX}px`;
-                bubble.style.top = `${currentY}px`;
-                bubble.style.opacity = opacity;
-                bubble.style.transform = `scale(${scale})`;
-
-                // Check if bubble is off screen with buffer
-                const flowWidth = this.domElements.messageFlow.clientWidth;
-                const flowHeight = this.domElements.messageFlow.clientHeight;
-                const buffer = 300; // Large buffer to ensure complete removal
-                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer ||
-                                   currentY < -buffer || currentY > flowHeight + buffer);
-
-                if (progress < 1 && opacity > 0 && !isOffScreen && bubble.parentNode) {
-                    requestAnimationFrame(animate);
-                } else if (bubble.parentNode) {
-                    // Remove card when animation completes, becomes fully transparent, or goes off screen
-                    bubble.parentNode.removeChild(bubble);
-                    this.returnBubbleToPool(bubble);
-                    this.activeRadialAnimations--;
-                }
-            };
-            
-            animate();
-        } else if (this.visualizationMode === 'starfield') {
-            // Starfield animation: simple distance-based physics
-            // Use the same center calculation as initial positioning
-            const centerX = startX;
-            const centerY = startY;
-            
-            // Generate random direction
-            const angle = Math.random() * 2 * Math.PI;
-            const directionX = Math.cos(angle);
-            const directionY = Math.sin(angle);
-            
-            // Animation state
-            let currentDistance = 0; // Start at center (distance = 0)
-            // Calculate dynamic max distance based on window size
-            const flowWidth = this.domElements.messageFlow.clientWidth;
-            const flowHeight = this.domElements.messageFlow.clientHeight;
-            // Distance from center to corner of screen (this is the furthest any card needs to travel)
-            const maxScreenDistance = Math.sqrt((flowWidth/2) * (flowWidth/2) + (flowHeight/2) * (flowHeight/2));
-            // Add buffer to account for card size and ensure cards move completely off screen
-            // Cards can be up to 400px wide and grow up to 8x scale, so need significant buffer
-            const cardMaxSize = 600 * 8; // max card width * max scale (increased by 50%)
-            const buffer = cardMaxSize / 2; // Half the max card size should be enough
-            const maxDistance = maxScreenDistance + buffer + 200;
-            const startTime = Date.now();
-            const maxDuration = 15000; // 10 second timeout (slower velocity)
-
-            const animate = () => {
-                const elapsed = Date.now() - startTime;
-                
-                // Calculate distance from center with acceleration (quadratic growth for starfield effect)
-                const timeRatio = Math.min(elapsed / maxDuration, 1);
-
-                const intensity = 8; // Higher = more dramatic
-                currentDistance = (Math.pow(timeRatio, intensity)) * maxDistance;
-
-                // Position based on distance and direction
-                const currentX = centerX + (directionX * currentDistance);
-                const currentY = centerY + (directionY * currentDistance);
-                
-                // Size based on distance (further = bigger)
-                const minScale = 0.3;
-                const maxScale = 10.0;
-                const distanceRatio = Math.min(currentDistance / maxDistance, 1);
-                const scale = minScale + (distanceRatio * distanceRatio * (maxScale - minScale));
-                
-                // Opacity: fade in quickly during first part of animation
-                let opacity;
-                if (distanceRatio < 0.02) {
-                    opacity = distanceRatio * 50; // Very quick fade in (2% of journey)
-                } else {
-                    opacity = 1; // Stay fully visible for the rest of the journey
-                }
-                
-                // Brightness: related to distance and size - darker at center, brighter at edge
-                const minBrightness = 0.6; // Dark at center (60% brightness)
-                const maxBrightness = 1.0; // Full brightness at edge
-                const brightness = minBrightness + (distanceRatio * (maxBrightness - minBrightness));
-                
-                // Update DOM
-                bubble.style.left = `${currentX}px`;
-                bubble.style.top = `${currentY}px`;
-                bubble.style.transform = `scale(${scale})`;
-                bubble.style.opacity = opacity;
-                bubble.style.filter = `brightness(${brightness})`;
-                
-                // Check if card should be removed (off screen or timeout)
-                const flowWidth = this.domElements.messageFlow.clientWidth;
-                const flowHeight = this.domElements.messageFlow.clientHeight;
-                const buffer = 2000; // Use larger fixed buffer instead of calculated one
-                const isOffScreen = (currentX < -buffer || currentX > flowWidth + buffer || 
-                                   currentY < -buffer || currentY > flowHeight + buffer);
-                
-                if (elapsed < maxDuration && !isOffScreen && bubble.parentNode) {
-                    requestAnimationFrame(animate);
-                } else if (bubble.parentNode) {
-                    // Remove card when off screen or timeout reached
-                    bubble.parentNode.removeChild(bubble);
-                }
-            };
-            
-            animate();
-        } else {
-            // Legacy bubbles animation: now handled by BubbleAnimation component
-            console.warn('animateMessage: Unexpected fallback to legacy bubbles mode');
-            // Just fade out the bubble since this shouldn't happen
-            bubble.style.transition = 'opacity 1s ease-out';
-            bubble.style.opacity = '0';
-            setTimeout(() => {
-                if (bubble.parentNode) {
-                    bubble.parentNode.removeChild(bubble);
-                    this.returnBubbleToPool(bubble);
-                }
-            }, 1000);
-        }
+        // Legacy radial animation removed - now handled by RadialVisualization component
+        // Legacy bubbles animation: now handled by BubbleAnimation component
+        console.warn('animateMessage: Unexpected fallback to legacy bubbles mode');
+        // Just fade out the bubble since this shouldn't happen
+        bubble.style.transition = 'opacity 1s ease-out';
+        bubble.style.opacity = '0';
+        setTimeout(() => {
+            if (bubble.parentNode) {
+                bubble.parentNode.removeChild(bubble);
+                this.returnBubbleToPool(bubble);
+            }
+        }, 1000);
     }
 
     // Network Graph Implementation is now handled by NetworkGraph component
@@ -3277,22 +2813,23 @@ class MQTTVisualizer {
     }
     
     updateMessageBubbleBrightness() {
-        // Update brightness and smooth scaling for message bubbles in bubbles and radial modes
-        if (this.visualizationMode !== 'bubbles' && this.visualizationMode !== 'radial') {
+        // Update brightness and smooth scaling for message bubbles in bubbles mode only
+        // (radial mode now handled by RadialVisualization component)
+        if (this.visualizationMode !== 'bubbles') {
             return;
         }
-        
+
         const now = Date.now();
         const bubbles = this.domElements.messageFlow.querySelectorAll('.message-bubble[data-brightness]');
-        
+
         bubbles.forEach(bubble => {
             const createdAt = parseInt(bubble.dataset.createdAt || '0');
             const currentBrightness = parseFloat(bubble.dataset.brightness || '1.0');
             const currentScale = parseFloat(bubble.dataset.scale || '1.0');
-            
+
             // Calculate age in seconds
             const ageInSeconds = (now - createdAt) / 1000;
-            
+
             // Gradually decrease brightness after 2 seconds
             let targetBrightness = 1.0;
             if (ageInSeconds > 2) {
@@ -3300,15 +2837,10 @@ class MQTTVisualizer {
                 const decayProgress = Math.min((ageInSeconds - 2) / 10, 1);
                 targetBrightness = Math.max(0.6, 1.0 - (decayProgress * 0.4));
             }
-            
-            // For radial mode, gradually increase scale based on age
-            let targetScale = 0.3;
-            if (this.visualizationMode === 'radial' && ageInSeconds > 0.5) {
-                // Gradually increase scale from 0.3 to 1.5 over 8 seconds
-                const scaleProgress = Math.min((ageInSeconds - 0.5) / 8, 1);
-                targetScale = 0.3 + (scaleProgress * 1.2); // 0.3 + 1.2 = 1.5 maximum
-            }
-            
+
+            // Scale handling for bubbles mode (legacy radial mode scaling removed)
+            let targetScale = 1.0; // Normal scale for bubbles mode
+
             // Smooth interpolation (move 15% towards target each update for smoother transitions)
             const newBrightness = currentBrightness + (targetBrightness - currentBrightness) * 0.15;
             const newScale = currentScale + (targetScale - currentScale) * 0.15;
@@ -4957,83 +4489,6 @@ class MQTTVisualizer {
     
     // Legacy createD3Bubble method removed - now handled by BubbleAnimation component
 
-    // D3 Radial Implementation (using original DOM bubbles with D3 animation)
-    createD3RadialBubble(messageData) {
-        // Unified Radial Mode Implementation - Task 5.2 Complete
-        if (!this.unifiedContainer) {
-            console.warn('Unified container not initialized for radial mode');
-            return;
-        }
-        
-        // Respect animation limits for performance
-        if (this.activeRadialAnimations >= this.maxRadialAnimations) {
-            return; // Skip creation if too many active animations
-        }
-        
-        // Process message data using unified MessageProcessor
-        const processedMessage = this.messageProcessor.processMessage(messageData);
-        
-        // Get container and dimensions from unified system
-        const container = this.unifiedContainer.getContainer();
-        const dimensions = this.unifiedContainer.getDimensions();
-        
-        // Create circle using Unified Element System
-        const circle = this.elementSystem.createSVGElement(
-            container, 
-            processedMessage, 
-            dimensions.centerX, 
-            dimensions.centerY
-        );
-        
-        // Add click handler for message modal
-        circle.on('click', () => {
-            this.showMessageModal(messageData);
-        });
-        
-        // Track element with unified tracker
-        this.elementTracker.trackElement(circle, {
-            type: 'radial',
-            status: 'animating',
-            createdAt: Date.now(),
-            messageData: processedMessage
-        });
-        
-        // Register element with cleanup manager for automatic cleanup
-        this.cleanupManager.trackElement(circle, {
-            type: 'radial',
-            onCleanup: () => {
-                this.activeRadialAnimations--;
-                this.elementTracker.removeElement(circle);
-                console.log('CleanupManager: Removed stuck radial element');
-            }
-        });
-        
-        // Create RadialAnimation for burst effect
-        const radialAnimation = new RadialAnimation(dimensions.centerX, dimensions.centerY, {
-            duration: 8000, // 8 seconds like original radial mode
-            fadeStartPoint: 0.2, // Start fading at 20% of journey
-            elementSize: { width: 50, height: 50 }
-        });
-        
-        // Start radial burst animation using actual window dimensions for proper off-screen detection
-        radialAnimation.animateSVGElement(
-            circle,
-            window.innerWidth,
-            window.innerHeight,
-            () => {
-                // Animation complete - untrack and decrement counter
-                this.cleanupManager.untrackElement(circle);
-                this.elementTracker.removeElement(circle);
-                this.activeRadialAnimations--;
-                console.log('RadialAnimation: Element completed and removed');
-            }
-        );
-        
-        console.log('RadialAnimation: Started radial burst from center:', dimensions.centerX, dimensions.centerY);
-        
-        // Increment active animation counter
-        this.activeRadialAnimations++;
-    }
     
 
     // Visualization switching
@@ -5055,6 +4510,9 @@ class MQTTVisualizer {
         }
         if (mode !== 'starfield' && this.starfieldVisualization) {
             this.starfieldVisualization.deactivate();
+        }
+        if (mode !== 'radial' && this.radialVisualization) {
+            this.radialVisualization.deactivate();
         }
 
         // Enable the requested mode
@@ -5087,6 +4545,16 @@ class MQTTVisualizer {
             this.updateVisualizationButtonStates(mode);
 
             console.log('Starfield mode activated successfully');
+            return true;
+        } else if (mode === 'radial') {
+            // Activate the radial visualization system
+            this.radialVisualization.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Radial mode activated successfully');
             return true;
         }
 
@@ -5196,7 +4664,7 @@ class MQTTVisualizer {
         });
         
         this.activeAnimations.clear();
-        this.activeRadialAnimations = 0;
+        // Legacy radial animation counter removed
         
         // Clean up unified container (removes all visualizations)
         if (this.unifiedContainer) {
@@ -5208,9 +4676,7 @@ class MQTTVisualizer {
         this.d3BubblesContainer = null;
         this.d3BubblesData = [];
         
-        // Clear D3 radial data
-        this.d3RadialSvg = null;
-        this.d3RadialContainer = null;
+        // Legacy D3 radial references removed (now handled by RadialVisualization component)
         
         // Stop D3 simulation and brightness decay
         if (this.d3Simulation) {
