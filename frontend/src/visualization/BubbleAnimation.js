@@ -23,6 +23,10 @@ class BubbleAnimation extends BaseVisualization {
             spawnWidth: 0.8, // Use 80% of container width for spawning
             maxBubbles: 100,
             gravityAcceleration: true,
+            bounceEnabled: true,
+            bounceVelocityMultiplier: 0.7, // Energy loss on bounce
+            gravity: 0.5, // Gravity acceleration strength
+            maxBounces: 3, // Maximum number of bounces before removal
             ...options
         };
 
@@ -34,6 +38,8 @@ class BubbleAnimation extends BaseVisualization {
 
         // Animation state
         this.isRunning = false;
+        this.animationFrame = null;
+        this.lastFrameTime = 0;
     }
 
     /**
@@ -138,6 +144,10 @@ class BubbleAnimation extends BaseVisualization {
     deactivate() {
         super.deactivate();
         this.isRunning = false;
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
         this.cleanup();
         console.log('BubbleAnimation: Deactivated');
     }
@@ -172,9 +182,10 @@ class BubbleAnimation extends BaseVisualization {
             y: -this.options.bubbleRadius * 2, // Start above container
 
             // Physics
-            vx: 0,
-            vy: 0,
+            vx: (Math.random() - 0.5) * 2, // Small random horizontal velocity
+            vy: 2, // Initial downward velocity
             radius: this.options.bubbleRadius,
+            bounceCount: 0,
 
             // Timing
             startTime: Date.now(),
@@ -185,7 +196,11 @@ class BubbleAnimation extends BaseVisualization {
 
         this.bubbleData.push(bubble);
         this.renderBubble(bubble);
-        this.animateBubble(bubble);
+
+        // Start physics animation if not already running
+        if (!this.animationFrame) {
+            this.startPhysicsAnimation();
+        }
 
         // Limit number of active bubbles
         if (this.bubbleData.length > this.options.maxBubbles) {
@@ -266,52 +281,115 @@ class BubbleAnimation extends BaseVisualization {
     }
 
     /**
-     * Animate bubble with gravity physics using D3
+     * Start physics-based animation loop
      */
-    animateBubble(bubble) {
+    startPhysicsAnimation() {
+        if (this.animationFrame) return;
+
+        const animate = (currentTime) => {
+            if (!this.isRunning || this.bubbleData.length === 0) {
+                this.animationFrame = null;
+                return;
+            }
+
+            const deltaTime = currentTime - this.lastFrameTime;
+            if (deltaTime > 16) { // ~60fps
+                this.updateBubblePhysics(deltaTime / 1000); // Convert to seconds
+                this.lastFrameTime = currentTime;
+            }
+
+            this.animationFrame = requestAnimationFrame(animate);
+        };
+
+        this.lastFrameTime = performance.now();
+        this.animationFrame = requestAnimationFrame(animate);
+    }
+
+    /**
+     * Update physics for all bubbles
+     */
+    updateBubblePhysics(deltaTime) {
         const containerHeight = this.container.clientHeight;
-        const endY = containerHeight + bubble.radius * 2;
-        const bubbleElement = this.bubblesGroup.select(`#${bubble.id}`);
+        const containerWidth = this.container.clientWidth;
 
-        console.log('🎬 Bubble animation:', {
-            bubbleId: bubble.id,
-            startY: bubble.y,
-            containerHeight: containerHeight,
-            endY: endY,
-            duration: this.options.fallDuration
-        });
+        for (let i = this.bubbleData.length - 1; i >= 0; i--) {
+            const bubble = this.bubbleData[i];
 
-        if (this.options.gravityAcceleration) {
-            // Use D3's easeQuadIn for gravity acceleration
-            bubbleElement
-                .transition()
-                .duration(this.options.fallDuration)
-                .ease(d3.easeQuadIn)
-                .attr('transform', `translate(${bubble.x}, ${endY})`)
-                .on('end', () => {
+            // Apply gravity
+            bubble.vy += this.options.gravity * deltaTime * 60; // Scale for 60fps
+
+            // Update position
+            bubble.x += bubble.vx * deltaTime * 60;
+            bubble.y += bubble.vy * deltaTime * 60;
+
+            // Bounce off bottom
+            if (bubble.y + bubble.radius >= containerHeight) {
+                bubble.y = containerHeight - bubble.radius;
+                bubble.vy = -Math.abs(bubble.vy) * this.options.bounceVelocityMultiplier;
+                bubble.vx += (Math.random() - 0.5) * 5; // Add random horizontal velocity on bounce
+                bubble.bounceCount++;
+
+                // Remove bubble after max bounces
+                if (bubble.bounceCount >= this.options.maxBounces) {
                     this.removeBubble(bubble.id);
-                });
-        } else {
-            // Linear fall without acceleration
-            bubbleElement
-                .transition()
-                .duration(this.options.fallDuration)
-                .ease(d3.easeLinear)
-                .attr('transform', `translate(${bubble.x}, ${endY})`)
-                .on('end', () => {
-                    this.removeBubble(bubble.id);
-                });
+                    continue;
+                }
+            }
+
+            // Bounce off walls
+            if (bubble.x - bubble.radius <= 0 || bubble.x + bubble.radius >= containerWidth) {
+                bubble.vx = -bubble.vx * 0.8; // Slight energy loss on wall bounce
+                bubble.x = Math.max(bubble.radius, Math.min(containerWidth - bubble.radius, bubble.x));
+            }
+
+            // Remove bubbles that are too old
+            if (Date.now() - bubble.startTime > this.options.fallDuration * 2) {
+                this.removeBubble(bubble.id);
+                continue;
+            }
+
+            // Update visual position
+            const bubbleElement = this.bubblesGroup.select(`#${bubble.id}`);
+            if (bubbleElement.node()) {
+                bubbleElement.attr('transform', `translate(${bubble.x}, ${bubble.y})`);
+            }
         }
     }
 
     /**
-     * Remove a specific bubble
+     * Remove a specific bubble with pop animation
      */
     removeBubble(bubbleId) {
-        // Remove from D3
-        this.bubblesGroup.select(`#${bubbleId}`).remove();
+        const bubbleElement = this.bubblesGroup.select(`#${bubbleId}`);
 
-        // Remove from data array
+        if (bubbleElement.node()) {
+            // Get current radius
+            const currentRadius = parseFloat(bubbleElement.select('circle').attr('r')) || this.options.bubbleRadius;
+
+            // Create pop animation: scale up quickly then fade out
+            bubbleElement.select('circle')
+                .transition()
+                .duration(150)
+                .ease(d3.easeCubicOut)
+                .attr('r', currentRadius * 1.4) // Scale up 40%
+                .transition()
+                .duration(100)
+                .ease(d3.easeQuadIn)
+                .attr('r', 0)
+                .style('opacity', 0)
+                .on('end', () => {
+                    // Remove the entire bubble group after animation
+                    bubbleElement.remove();
+                });
+
+            // Fade out the text simultaneously
+            bubbleElement.select('text')
+                .transition()
+                .duration(250)
+                .style('opacity', 0);
+        }
+
+        // Remove from data array immediately to prevent physics updates
         const index = this.bubbleData.findIndex(b => b.id === bubbleId);
         if (index >= 0) {
             this.bubbleData.splice(index, 1);
@@ -333,6 +411,11 @@ class BubbleAnimation extends BaseVisualization {
      * Clean up all bubbles and animations
      */
     cleanup() {
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
         if (this.bubblesGroup) {
             this.bubblesGroup.selectAll('.bubble').remove();
         }
@@ -382,6 +465,11 @@ class BubbleAnimation extends BaseVisualization {
      * Destroy the bubble animation
      */
     destroy() {
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
         this.cleanup();
 
         if (this.resizeHandler) {
