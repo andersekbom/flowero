@@ -25,6 +25,7 @@ import ColorLegend from './src/ui/ColorLegend.js';
 import { BaseVisualization, CircleRenderer } from './src/visualization/BaseVisualization.js';
 import BubbleAnimation from './src/visualization/BubbleAnimation.js';
 import NetworkGraph from './src/visualization/NetworkGraph.js';
+import ClusteredBubbles from './src/visualization/ClusteredBubbles.js';
 import StarfieldVisualization from './src/visualization/StarfieldVisualization.js';
 import RadialVisualization from './src/visualization/RadialVisualization.js';
 import { detectPassiveSupport, hasIntersectionObserver, hasRequestIdleCallback } from './src/config/BrowserDetection.js';
@@ -33,7 +34,6 @@ import MessageProcessor from './src/core/MessageProcessor.js';
 import CleanupManager from './src/core/CleanupManager.js';
 import LinearAnimation from './src/animation/LinearAnimation.js';
 import ForceAnimation from './src/animation/ForceAnimation.js';
-import ClustersAnimation from './src/animation/ClustersAnimation.js';
 import AnimationManager from './src/animation/AnimationManager.js';
 import { DIRECTIONS, ANIMATION_TYPES } from './src/animation/AnimationTypes.js';
 import UnifiedElementSystem from './src/elements/UnifiedElementSystem.js';
@@ -227,6 +227,14 @@ class MQTTVisualizer {
         console.log('🔴 Calling initialize()...');
         this.radialVisualization.initialize();
         console.log('🔴 RadialVisualization initialization complete');
+
+        // Initialize Clustered Bubbles Visualization System
+        console.log('🟡 Creating ClusteredBubbles instance...');
+        this.clusteredBubbles = new ClusteredBubbles(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🟡 ClusteredBubbles created:', this.clusteredBubbles);
+        console.log('🟡 Calling initialize()...');
+        this.clusteredBubbles.initialize();
+        console.log('🟡 ClusteredBubbles initialization complete');
 
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
@@ -473,6 +481,10 @@ class MQTTVisualizer {
                 // For radial mode, get count from RadialVisualization
                 const state = this.radialVisualization.getState();
                 activeCards = state.activeElements || 0;
+            } else if (this.visualizationMode === 'clusters' && this.clusteredBubbles) {
+                // For clusters mode, get count from ClusteredBubbles
+                const state = this.clusteredBubbles.getState();
+                activeCards = state.activeNodes || 0;
             } else {
                 // For other modes, use unified element tracker
                 activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
@@ -599,6 +611,18 @@ class MQTTVisualizer {
                 timestamp: messageData.timestamp,
                 mode: 'radial'
             });
+        } else if (this.visualizationMode === 'clusters' && this.clusteredBubbles) {
+            console.log('🟡 Routing message to ClusteredBubbles system:', messageData);
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+            // Send message to clustered bubbles system
+            this.clusteredBubbles.addMessage(messageData);
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'clusters'
+            });
         } else {
             // Route to other visualization modes (legacy)
             this.createVisualization(messageData);
@@ -620,10 +644,9 @@ class MQTTVisualizer {
     createVisualization(messageData) {
         if (this.visualizationMode === 'network') {
             this.updateNetworkGraph(messageData);
-        } else if (this.visualizationMode === 'clusters') {
-            this.updateClusters(messageData);
-        // Note: bubbles mode is now handled by BubbleAnimation component via handleMQTTMessage
         }
+        // Note: bubbles mode is now handled by BubbleAnimation component via handleMQTTMessage
+        // Note: clusters mode is now handled by ClusteredBubbles component via handleMQTTMessage
     }
 
     // Message Animation - Optimized with object pooling
@@ -723,27 +746,7 @@ class MQTTVisualizer {
 
     // Network Graph Implementation is now handled by NetworkGraph component
 
-    // Clusters Implementation - Process messages through ClustersAnimation
-    updateClusters(messageData) {
-        console.log('updateClusters called with:', messageData);
-
-        // Ensure clusters animation is initialized
-        if (!this.clustersAnimation) {
-            console.warn('ClustersAnimation not initialized for clusters mode');
-            return;
-        }
-
-        const customer = this.extractCustomerFromTopic(messageData.topic);
-        const customerColor = this.getCustomerColor(customer);
-        const topicColor = this.getTopicColor(messageData.topic);
-
-        console.log(`Processing cluster message for customer: ${customer}, color: ${customerColor}`);
-
-        // Process message through ClustersAnimation - use customer color for all devices in cluster
-        const node = this.clustersAnimation.processMessage(messageData, customerColor, customerColor);
-
-        console.log(`ClustersAnimation: Processed message for ${customer}, node:`, node);
-    }
+    // Clusters Implementation - Now handled by ClusteredBubbles component via handleMQTTMessage
 
     // Initialize network mode (wrapper for D3 network initialization)
     initializeNetworkMode() {
@@ -2760,6 +2763,9 @@ class MQTTVisualizer {
         if (mode !== 'radial' && this.radialVisualization) {
             this.radialVisualization.deactivate();
         }
+        if (mode !== 'clusters' && this.clusteredBubbles) {
+            this.clusteredBubbles.deactivate();
+        }
 
         // Enable the requested mode
         if (mode === 'bubbles') {
@@ -2801,6 +2807,16 @@ class MQTTVisualizer {
             this.updateVisualizationButtonStates(mode);
 
             console.log('Radial mode activated successfully');
+            return true;
+        } else if (mode === 'clusters') {
+            // Activate the clustered bubbles visualization system
+            this.clusteredBubbles.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Clusters mode activated successfully');
             return true;
         }
 
