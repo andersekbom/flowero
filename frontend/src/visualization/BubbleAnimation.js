@@ -26,7 +26,9 @@ class BubbleAnimation extends BaseVisualization {
             bounceEnabled: true,
             bounceVelocityMultiplier: 0.7, // Energy loss on bounce
             gravity: 0.5, // Gravity acceleration strength
-            maxBounces: 3, // Maximum number of bounces before removal
+            maxBounces: 10, // Maximum number of bounces before forced removal
+            restVelocityThreshold: 0.5, // Velocity below which bubble is considered at rest
+            restTimeThreshold: 1000, // Time in ms to wait before removing resting bubble
             ...options
         };
 
@@ -186,6 +188,8 @@ class BubbleAnimation extends BaseVisualization {
             vy: 2, // Initial downward velocity
             radius: this.options.bubbleRadius,
             bounceCount: 0,
+            isResting: false,
+            restStartTime: null,
 
             // Timing
             startTime: Date.now(),
@@ -328,12 +332,31 @@ class BubbleAnimation extends BaseVisualization {
                 bubble.vy = -Math.abs(bubble.vy) * this.options.bounceVelocityMultiplier;
                 bubble.vx += (Math.random() - 0.5) * 5; // Add random horizontal velocity on bounce
                 bubble.bounceCount++;
+            }
 
-                // Remove bubble after max bounces
-                if (bubble.bounceCount >= this.options.maxBounces) {
+            // Remove bubble if it has bounced too many times
+            if (bubble.bounceCount >= this.options.maxBounces) {
+                this.removeBubble(bubble.id);
+                continue;
+            }
+
+            // Check if bubble is at rest (on ground with low velocity)
+            const isOnGround = bubble.y + bubble.radius >= containerHeight - 1;
+            const totalVelocity = Math.sqrt(bubble.vx * bubble.vx + bubble.vy * bubble.vy);
+            const isSlowEnough = totalVelocity < this.options.restVelocityThreshold;
+
+            if (isOnGround && isSlowEnough) {
+                if (!bubble.isResting) {
+                    bubble.isResting = true;
+                    bubble.restStartTime = Date.now();
+                } else if (Date.now() - bubble.restStartTime > this.options.restTimeThreshold) {
                     this.removeBubble(bubble.id);
                     continue;
                 }
+            } else {
+                // Reset resting state if bubble starts moving again
+                bubble.isResting = false;
+                bubble.restStartTime = null;
             }
 
             // Bounce off walls
