@@ -1,6 +1,6 @@
 # MQTT Message Visualizer
 
-A real-time MQTT message visualizer with FastAPI backend and JavaScript frontend that provides WebSocket-based live message streaming and visualization.
+A real-time MQTT message visualizer with FastAPI backend and JavaScript frontend featuring multiple visualization modes.
 
 ## Prerequisites
 
@@ -63,4 +63,32 @@ Once running, the server will be available at:
 - **API Documentation:** http://localhost:8000/docs
 - **WebSocket Endpoint:** ws://localhost:8000/ws
 
-The application provides a real-time MQTT message visualizer with WebSocket connectivity for live message streaming and visualization.
+## 🏗️ Frontend Architecture
+
+```
+frontend/src/
+├── animation/          # Animation systems (5 modules)
+│   ├── LinearAnimation.js
+│   ├── ForceAnimation.js
+│   ├── ClustersAnimation.js
+│   ├── AnimationManager.js
+│   └── AnimationTypes.js
+├── config/            # Configuration & constants (3 modules)
+│   ├── AppConfig.js
+│   ├── GlobalFunctions.js
+│   └── Constants.js
+├── core/              # Core application systems (4 modules)
+│   ├── LayoutCalculator.js
+│   ├── MessageProcessor.js
+│   ├── CleanupManager.js
+│   ├── ContainerSystem.js
+│   └── PerformanceManager.js
+├── elements/          # Element management (5 modules)
+│   ├── StyleProvider.js
+│   ├── CircleStyle.js
+│   ├── UnifiedElementSystem.js
+│   ├── UnifiedElementTracker.js
+│   └── ElementFactory.js
+└── modes/             # Mode switching (1 module)
+    └── ModeManager.js
+```
