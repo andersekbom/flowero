@@ -55,6 +55,8 @@ logs/
 *.sqlite
 *.sqlite3
 
+.claude
+
 # Environment variables
 .env
 .env.local
