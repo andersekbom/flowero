@@ -46,6 +46,12 @@ class MapVisualization extends BaseVisualization {
         this.deviceGroup = null;
         this.pulseGroup = null;
         this.linkGroup = null;
+        this.zoom = null;
+
+        // D3 geo projection
+        this.projection = null;
+        this.path = null;
+        this.worldData = null;
 
         // Map data
         this.deviceNodes = new Map();
@@ -62,6 +68,9 @@ class MapVisualization extends BaseVisualization {
             minLng: -180,
             maxLng: 180
         };
+
+        // World map TopoJSON URL
+        this.worldAtlasUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
     }
 
     /**
@@ -106,57 +115,138 @@ class MapVisualization extends BaseVisualization {
             .style('pointer-events', 'auto')
             .style('z-index', '10');
 
-        // Create groups for organization (bottom to top rendering order)
-        this.linkGroup = this.svg.append('g').attr('class', 'links');
-        this.mapGroup = this.svg.append('g').attr('class', 'map-background');
-        this.deviceGroup = this.svg.append('g').attr('class', 'devices');
-        this.pulseGroup = this.svg.append('g').attr('class', 'pulses');
+        // Create main group for zoom/pan transformations
+        const zoomGroup = this.svg.append('g').attr('class', 'zoom-group');
 
-        // Add simple map background (grid lines)
-        this.drawMapBackground();
+        // Create groups for organization (bottom to top rendering order)
+        this.mapGroup = zoomGroup.append('g').attr('class', 'map-background');
+        this.linkGroup = zoomGroup.append('g').attr('class', 'links');
+        this.deviceGroup = zoomGroup.append('g').attr('class', 'devices');
+        this.pulseGroup = zoomGroup.append('g').attr('class', 'pulses');
+
+        // Setup zoom and pan
+        this.setupZoomPan(zoomGroup);
+
+        // Setup D3 geo projection
+        this.setupProjection(width, height);
+
+        // Load and render world map
+        this.loadWorldMap();
 
         console.log('MapVisualization: SVG container created');
     }
 
     /**
-     * Draw simple map background with grid lines
+     * Setup D3 geo projection
      */
-    drawMapBackground() {
+    setupProjection(width, height) {
+        // Use Natural Earth projection for a nice world view
+        this.projection = d3.geoNaturalEarth1()
+            .scale(width / 6.5)
+            .translate([width / 2, height / 2]);
+
+        // Create path generator
+        this.path = d3.geoPath().projection(this.projection);
+    }
+
+    /**
+     * Setup zoom and pan behavior
+     */
+    setupZoomPan(zoomGroup) {
+        // Create zoom behavior
+        this.zoom = d3.zoom()
+            .scaleExtent([0.5, 8]) // Allow zoom from 50% to 800%
+            .on('zoom', (event) => {
+                zoomGroup.attr('transform', event.transform);
+            });
+
+        // Apply zoom to SVG
+        this.svg.call(this.zoom);
+    }
+
+    /**
+     * Load world map from TopoJSON
+     */
+    async loadWorldMap() {
+        try {
+            console.log('MapVisualization: Loading world map...');
+            const response = await fetch(this.worldAtlasUrl);
+            const world = await response.json();
+
+            // Convert TopoJSON to GeoJSON
+            this.worldData = topojson.feature(world, world.objects.countries);
+
+            // Draw the world map
+            this.drawWorldMap();
+
+            console.log('MapVisualization: World map loaded successfully');
+        } catch (error) {
+            console.error('MapVisualization: Failed to load world map:', error);
+            // Fall back to simple background
+            this.drawFallbackBackground();
+        }
+    }
+
+    /**
+     * Draw world map with theme colors
+     */
+    drawWorldMap() {
+        if (!this.worldData) return;
+
+        // Get current theme colors from CSS variables
+        const mapColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--input-bg') || 'rgba(255, 255, 255, 0.1)';
+        const borderColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--border-color') || 'rgba(255, 255, 255, 0.2)';
+
+        // Draw countries
+        this.mapGroup.selectAll('path')
+            .data(this.worldData.features)
+            .enter()
+            .append('path')
+            .attr('d', this.path)
+            .attr('fill', mapColor)
+            .attr('stroke', borderColor)
+            .attr('stroke-width', 0.5)
+            .attr('opacity', 0.6)
+            .style('transition', 'fill 0.3s ease');
+    }
+
+    /**
+     * Update map colors when theme changes
+     */
+    updateMapColors() {
+        if (!this.mapGroup) return;
+
+        const mapColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--input-bg') || 'rgba(255, 255, 255, 0.1)';
+        const borderColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--border-color') || 'rgba(255, 255, 255, 0.2)';
+
+        this.mapGroup.selectAll('path')
+            .transition()
+            .duration(300)
+            .attr('fill', mapColor)
+            .attr('stroke', borderColor);
+    }
+
+    /**
+     * Draw fallback background if world map fails to load
+     */
+    drawFallbackBackground() {
         const rect = this.container.getBoundingClientRect();
         const width = rect.width || window.innerWidth;
         const height = rect.height || window.innerHeight;
+
+        const mapColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--input-bg') || 'rgba(20, 40, 60, 0.3)';
 
         // Add background rectangle
         this.mapGroup.append('rect')
             .attr('width', width)
             .attr('height', height)
-            .attr('fill', 'rgba(20, 40, 60, 0.3)')
+            .attr('fill', mapColor)
             .attr('stroke', 'none');
-
-        // Add grid lines
-        const gridSpacing = 50;
-
-        // Vertical lines
-        for (let x = 0; x < width; x += gridSpacing) {
-            this.mapGroup.append('line')
-                .attr('x1', x)
-                .attr('y1', 0)
-                .attr('x2', x)
-                .attr('y2', height)
-                .attr('stroke', 'rgba(255, 255, 255, 0.1)')
-                .attr('stroke-width', 1);
-        }
-
-        // Horizontal lines
-        for (let y = 0; y < height; y += gridSpacing) {
-            this.mapGroup.append('line')
-                .attr('x1', 0)
-                .attr('y1', y)
-                .attr('x2', width)
-                .attr('y2', y)
-                .attr('stroke', 'rgba(255, 255, 255, 0.1)')
-                .attr('stroke-width', 1);
-        }
     }
 
     /**
@@ -199,23 +289,26 @@ class MapVisualization extends BaseVisualization {
     }
 
     /**
-     * Convert latitude/longitude to screen coordinates using Mercator projection
+     * Convert latitude/longitude to screen coordinates using D3 geo projection
      */
     latLngToScreen(lat, lng) {
-        const rect = this.container.getBoundingClientRect();
-        const width = rect.width || window.innerWidth;
-        const height = rect.height || window.innerHeight;
+        if (!this.projection) {
+            // Fallback if projection not ready
+            const rect = this.container.getBoundingClientRect();
+            const width = rect.width || window.innerWidth;
+            const height = rect.height || window.innerHeight;
 
-        // Simple Mercator projection
-        // Normalize longitude to 0-1 range
-        const x = ((lng + 180) / 360) * width;
+            const x = ((lng + 180) / 360) * width;
+            const latRad = (lat * Math.PI) / 180;
+            const mercN = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+            const y = (height / 2) - (width * mercN / (2 * Math.PI));
 
-        // Mercator projection for latitude
-        const latRad = (lat * Math.PI) / 180;
-        const mercN = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-        const y = (height / 2) - (width * mercN / (2 * Math.PI));
+            return { x, y };
+        }
 
-        return { x, y };
+        // Use D3 projection
+        const coords = this.projection([lng, lat]);
+        return coords ? { x: coords[0], y: coords[1] } : { x: 0, y: 0 };
     }
 
     /**
@@ -358,7 +451,11 @@ class MapVisualization extends BaseVisualization {
 
         console.log('MapVisualization: Activating...');
         this.setupMapContainer();
-        this.createCentralNode();
+
+        // Wait for projection to be ready before creating central node
+        setTimeout(() => {
+            this.createCentralNode();
+        }, 100);
 
         console.log('MapVisualization: Activated and ready');
     }
@@ -458,6 +555,16 @@ class MapVisualization extends BaseVisualization {
             deviceCount: this.deviceNodes.size,
             coordinateCacheSize: this.coordinateCache.size
         };
+    }
+
+    /**
+     * Handle theme changes
+     */
+    handleThemeChange(themeData) {
+        super.handleThemeChange(themeData);
+
+        // Update map colors to match new theme
+        this.updateMapColors();
     }
 
     /**
