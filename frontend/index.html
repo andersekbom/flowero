@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Message Visualizer</title>
+    <style>
+        :root {
+            /* Default theme (light blue) */
+            --bg-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --sidebar-bg: rgba(0, 0, 0, 0.3);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-color: white;
+            --input-bg: rgba(255, 255, 255, 0.1);
+            --input-border: rgba(255, 255, 255, 0.2);
+            --button-bg: #4CAF50;
+            --button-hover: #45a049;
+            --stats-bg: rgba(0, 0, 0, 0.4);
+            --toggle-bg: rgba(255, 255, 255, 0.1);
+            --toggle-hover: rgba(255, 255, 255, 0.2);
+        }
+
+        [data-theme="dark"] {
+            /* Dark theme with neon colors */
+            --bg-gradient: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+            --sidebar-bg: rgba(10, 10, 10, 0.9);
+            --border-color: rgba(0, 255, 255, 0.3);
+            --text-color: #00ffff;
+            --input-bg: rgba(0, 20, 20, 0.8);
+            --input-border: rgba(0, 255, 255, 0.4);
+            --button-bg: #00ff41;
+            --button-hover: #00cc33;
+            --stats-bg: rgba(0, 0, 0, 0.8);
+            --toggle-bg: rgba(0, 255, 255, 0.2);
+            --toggle-hover: rgba(0, 255, 255, 0.4);
+        }
+
+        [data-theme="spring"] {
+            /* Spring theme - fresh greens and pastels */
+            --bg-gradient: linear-gradient(135deg, #a8e6cf 0%, #dcedc1 100%);
+            --sidebar-bg: rgba(255, 255, 255, 0.7);
+            --border-color: rgba(76, 175, 80, 0.3);
+            --text-color: #2e7d32;
+            --input-bg: rgba(255, 255, 255, 0.8);
+            --input-border: rgba(76, 175, 80, 0.4);
+            --button-bg: #4CAF50;
+            --button-hover: #45a049;
+            --stats-bg: rgba(255, 255, 255, 0.8);
+            --toggle-bg: rgba(76, 175, 80, 0.2);
+            --toggle-hover: rgba(76, 175, 80, 0.4);
+        }
+
+        [data-theme="summer"] {
+            /* Summer theme - bright oranges and yellows */
+            --bg-gradient: linear-gradient(135deg, #ffd89b 0%, #19547b 100%);
+            --sidebar-bg: rgba(255, 255, 255, 0.6);
+            --border-color: rgba(255, 152, 0, 0.4);
+            --text-color: #e65100;
+            --input-bg: rgba(255, 255, 255, 0.7);
+            --input-border: rgba(255, 152, 0, 0.5);
+            --button-bg: #FF9800;
+            --button-hover: #F57C00;
+            --stats-bg: rgba(255, 255, 255, 0.7);
+            --toggle-bg: rgba(255, 152, 0, 0.2);
+            --toggle-hover: rgba(255, 152, 0, 0.4);
+        }
+
+        [data-theme="autumn"] {
+            /* Autumn theme - warm browns and oranges */
+            --bg-gradient: linear-gradient(135deg, #d2691e 0%, #8b4513 100%);
+            --sidebar-bg: rgba(139, 69, 19, 0.8);
+            --border-color: rgba(255, 140, 0, 0.4);
+            --text-color: #fff8dc;
+            --input-bg: rgba(160, 82, 45, 0.6);
+            --input-border: rgba(255, 140, 0, 0.5);
+            --button-bg: #D2691E;
+            --button-hover: #A0522D;
+            --stats-bg: rgba(139, 69, 19, 0.8);
+            --toggle-bg: rgba(255, 140, 0, 0.2);
+            --toggle-hover: rgba(255, 140, 0, 0.4);
+        }
+
+        [data-theme="winter"] {
+            /* Winter theme - cool blues and whites */
+            --bg-gradient: linear-gradient(135deg, #e6f3ff 0%, #4682b4 100%);
+            --sidebar-bg: rgba(176, 196, 222, 0.8);
+            --border-color: rgba(70, 130, 180, 0.4);
+            --text-color: #191970;
+            --input-bg: rgba(248, 248, 255, 0.8);
+            --input-border: rgba(70, 130, 180, 0.5);
+            --button-bg: #4682B4;
+            --button-hover: #36648B;
+            --stats-bg: rgba(248, 248, 255, 0.8);
+            --toggle-bg: rgba(70, 130, 180, 0.2);
+            --toggle-hover: rgba(70, 130, 180, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            height: 100vh;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            position: relative;
+            transition: width 0.3s ease;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        .sidebar.collapsed {
+            width: 60px;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            top: 20px;
+            right: 15px;
+            width: 30px;
+            height: 30px;
+            background: var(--toggle-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1100;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--toggle-hover);
+            border-color: var(--border-color);
+        }
+
+        .chevron {
+            width: 16px;
+            height: 16px;
+            color: var(--text-color);
+            transition: transform 0.3s ease;
+            transform: rotate(0deg);
+        }
+
+        .sidebar.collapsed .chevron {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-content {
+            padding: 20px;
+            padding-top: 60px;
+            transition: opacity 0.3s ease;
+            min-width: 300px;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            z-index: 200;
+        }
+
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Visualization Mode Icons */
+        .visualization-icons {
+            position: absolute;
+            top: 80px;
+            left: 0;
+            width: 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px 0;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .sidebar:not(.collapsed) .visualization-icons {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .viz-icon-btn {
+            width: 40px;
+            height: 40px;
+            background: var(--toggle-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 auto;
+            color: var(--text-color);
+            position: relative;
+        }
+
+        .viz-icon-btn:hover {
+            background: var(--toggle-hover);
+            transform: scale(1.1);
+            z-index: 2100;            
+        }
+
+        .viz-icon-btn.active {
+            background: var(--button-bg);
+            color: white;
+        }
+
+        .viz-icon-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Tooltip for collapsed mode */
+        .viz-icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: 50px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 16px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 2100;
+        }
+
+        .viz-icon-btn:hover::after {
+            opacity: 1;
+        }
+
+        /* Visualization selector in expanded mode */
+        .visualization-selector {
+            margin-top: 20px;
+        }
+
+        .viz-mode-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .viz-mode-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            background: var(--toggle-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--text-color);
+            text-align: left;
+            width: 100%;
+            position: relative;
+            z-index: 300;
+        }
+
+        .viz-mode-btn:hover {
+            background: var(--toggle-hover);
+        }
+
+        .viz-mode-btn.active {
+            background: var(--button-bg);
+            color: white;
+        }
+
+        .viz-mode-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .message-flow {
+            flex: 1;
+            position: relative;
+            overflow: visible;
+            background: radial-gradient(circle at center, var(--input-bg) 0%, transparent 70%);
+            /* Improve rendering performance */
+            will-change: auto;
+            /* contain: layout style paint; - DISABLED for radial mode debugging */
+        }
+
+        /* Space background for starfield mode */
+        .message-flow.starfield-mode {
+            position: relative;
+        }
+        
+        .message-flow.starfield-mode::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url('stars.jpg') center/cover no-repeat;
+            background-size: 100% 100%;
+            z-index: -1;
+            animation: starfieldZoom 20s linear infinite;
+            /* Hardware acceleration for background animation */
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+        
+        .message-flow.starfield-mode::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: black;
+            z-index: -1;
+            opacity: 0;
+            animation: starfieldBlackout 20s linear infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes starfieldZoom {
+            0% {
+                background-size: 100% 100%;
+            }
+            94% {
+                background-size: 200% 200%;
+            }
+            96% {
+                background-size: 200% 200%;
+            }
+            96.1% {
+                background-size: 100% 100%;
+            }
+            100% {
+                background-size: 100% 100%;
+            }
+        }
+        
+        @keyframes starfieldBlackout {
+            0% {
+                opacity: 0;
+            }
+            94% {
+                opacity: 0;
+            }
+            95% {
+                opacity: 1;
+            }
+            99% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+
+        .connection-form {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+        }
+
+        input {
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--input-border);
+        }
+
+        input::placeholder {
+            color: var(--text-color);
+            opacity: 0.6;
+        }
+
+        button {
+            background: var(--button-bg);
+            color: black;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: var(--button-hover);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.3);
+            border: 1px solid #4CAF50;
+        }
+
+        .status.disconnected {
+            background: rgba(255, 87, 34, 0.3);
+            border: 1px solid #FF5722;
+        }
+
+        .status.connecting {
+            background: rgba(255, 193, 7, 0.3);
+            border: 1px solid #FFC107;
+        }
+
+        .message-bubble {
+            position: absolute;
+            padding: 12px 16px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            min-width: 270px;
+            word-wrap: break-word;
+            transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.5s ease;
+            z-index: 10;
+            /* Hardware acceleration hints */
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            perspective: 1000px;
+            /* Force GPU layer */
+            transform: translateZ(0);
+        }
+
+        /* Circular bubble styling for radial mode */
+        .radial-mode .message-bubble {
+            border-radius: 50%;
+            width: 300px;
+            height: 300px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            max-width: none;
+            min-width: none;
+        }
+
+        .radial-mode .message-customer {
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+
+        .radial-mode .message-topic {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .radial-mode .message-time {
+            font-size: 12px;
+            margin-top: 2px;
+        }
+
+        /* Network mode styles */
+        .message-flow.network-mode {
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+            position: relative;
+        }
+        
+        .message-flow.network-mode::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        #networkSvg {
+            background: transparent;
+            overflow: visible;
+            z-index: 1;
+        }
+        
+        /* Ensure UI elements stay visible in network mode */
+        .message-flow.network-mode .live-indicator {
+            display: flex !important;
+            z-index: 2000;
+        }
+        
+        .message-flow.network-mode .broker-url-display,
+        .message-flow.network-mode .color-legend,
+        .message-flow.network-mode .stats-panel {
+            display: block !important;
+            z-index: 2000;
+        }
+
+        .message-customer {
+            font-weight: bold;
+            font-size: 18px;
+            color: white !important;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.9);
+        }
+
+        .message-topic {
+            font-weight: bold;
+            font-size: 14px;
+            color: white !important;
+            opacity: 0.8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.9);
+        }
+
+        .message-time {
+            font-size: 14px;
+            color: white !important;
+            opacity: 0.7;
+            margin-top: 5px;
+            text-align: right;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.9);
+        }
+
+        .stats-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--stats-bg);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 200px;
+            z-index: 2000;
+            border: 1px solid var(--border-color);
+        }
+
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .stats-label {
+            opacity: 0.8;
+        }
+
+        .stats-value {
+            font-weight: bold;
+        }
+
+        .topic-legend {
+            margin-top: 20px;
+        }
+
+        .topic-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .topic-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translate3d(0, 50px, 0);
+            }
+            to {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+        }
+
+        @keyframes fadeOutUp {
+            from {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+            }
+            to {
+                opacity: 0;
+                transform: translate3d(0, -50px, 0);
+            }
+        }
+
+        .message-enter {
+            animation: fadeInUp 0.5s ease-out;
+        }
+
+        .message-exit {
+            animation: fadeOutUp 0.5s ease-out;
+        }
+
+        .live-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 15px;
+            border-radius: 20px;
+            z-index: 2000;
+            border: 1px solid var(--border-color);
+        }
+        
+        .broker-url-display {
+            position: absolute;
+            top: 65px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 12px;
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            font-size: 15px;
+            color: var(--text-color);
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            z-index: 2000;
+        }
+
+        .color-legend {
+            position: absolute;
+            top: 110px;
+            left: 20px;
+            background: var(--stats-bg);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            min-width: 150px;
+            z-index: 2000;
+        }
+
+        .legend-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 15px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .legend-customer {
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.9);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+            will-change: opacity;
+            transform: translateZ(0);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .flower-visualization {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flower-container {
+            position: relative;
+            width: 800px;
+            height: 800px;
+            /* animation: rotate 60s linear infinite; -- DISABLED FOR DEBUGGING */
+        }
+
+        .flower-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 56px;
+            height: 56px;
+            transform: translate(-50%, -50%);
+            background: #fbbf24;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4);
+            z-index: 10;
+        }
+
+        .flower-petal {
+            position: absolute;
+            width: 60px;
+            height: 360px;
+            background: currentColor;
+            transform-origin: 50% 100%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            clip-path: polygon(45% 100%, 10% 0%, 90% 0%, 55% 100%);
+            border-radius: 50% 50% 0% 0%;
+        }
+
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes petalGrow {
+            0% { 
+                transform: scale(0) rotate(0deg);
+                opacity: 0;
+            }
+            100% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        @keyframes petalFade {
+            0% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            100% { 
+                transform: scale(0) rotate(0deg);
+                opacity: 0;
+            }
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--input-border);
+        }
+
+        select option {
+            background: var(--sidebar-bg);
+            color: var(--text-color);
+        }
+
+        /* Dark theme neon colors for message bubbles */
+        [data-theme="dark"] .message-bubble {
+            box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2);
+        }
+
+        /* Message details modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: var(--sidebar-bg) !important;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            position: relative;
+            animation: modalSlideIn 0.3s ease;
+            color: #ffffff !important;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffffff !important;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 32px;
+            color: white !important;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-body {
+            color: white !important;
+        }
+
+        .modal-field {
+            margin-bottom: 15px;
+        }
+
+        .modal-field-label {
+            font-weight: bold;
+            font-size: 18px;
+            color: white !important;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .modal-field-value {
+            font-size: 18px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: white !important;
+            line-height: 1.4;
+        }
+
+        .modal-field-value.large {
+            min-height: 100px;
+        }
+
+        .message-bubble {
+            cursor: pointer;
+        }
+
+        .message-bubble:hover {
+            transform: scale(1.02) translateZ(0);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s ease;
+        }
+
+        .theme-selector {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar collapsed" id="sidebar">
+            <div class="sidebar-toggle" id="sidebarToggle">
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+            </div>
+            
+            <!-- Visualization icons for collapsed sidebar -->
+            <div class="visualization-icons">
+                <div class="viz-icon-btn" data-mode="bubbles" data-tooltip="Falling Bubbles">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="6" cy="6" r="3"/>
+                        <circle cx="18" cy="12" r="3"/>
+                        <circle cx="12" cy="18" r="3"/>
+                        <circle cx="8" cy="14" r="2"/>
+                    </svg>
+                </div>
+                <div class="viz-icon-btn" data-mode="radial" data-tooltip="Radial Burst">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+                <div class="viz-icon-btn" data-mode="starfield" data-tooltip="Starfield Mode">
+                    <svg viewBox="0 0 24 24">
+                        <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26"/>
+                        <circle cx="19" cy="5" r="1"/>
+                        <circle cx="5" cy="7" r="1"/>
+                        <circle cx="20" cy="18" r="1"/>
+                        <circle cx="4" cy="19" r="1"/>
+                    </svg>
+                </div>
+                <div class="viz-icon-btn" data-mode="network" data-tooltip="Network Graph">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                        <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <line x1="12" y1="12" x2="6" y2="6" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="18" y2="6" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="6" y2="18" stroke="currentColor" stroke-width="1"/>
+                        <line x1="12" y1="12" x2="18" y2="18" stroke="currentColor" stroke-width="1"/>
+                    </svg>
+                </div>
+                <div class="viz-icon-btn" data-mode="map" data-tooltip="Geographic Map">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="9" r="2.5" fill="currentColor"/>
+                    </svg>
+                </div>
+                <div class="viz-icon-btn disabled" data-mode="clusters" data-tooltip="Clustered Bubbles - Refactoring in progress" style="opacity: 0.3; pointer-events: none;">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.8"/>
+                        <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.6"/>
+                        <circle cx="6" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                        <circle cx="18" cy="16" r="3" fill="currentColor" opacity="0.8"/>
+                        <circle cx="16" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                        <circle cx="20" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="sidebar-content">
+                <h1>Flowero</h1>
+            
+            <div id="status" class="status disconnected">
+                Disconnected
+            </div>
+
+            <div class="connection-form">
+                <div class="form-group">
+                    <label for="host">Broker</label>
+                    <input type="text" id="host" placeholder="">
+                </div>
+                
+                <div class="form-group">
+                    <label for="port">Port</label>
+                    <input type="number" id="port" placeholder="1883" value="1883">
+                </div>
+                
+                <div class="form-group">
+                    <label for="username">Username (Optional)</label>
+                    <input type="text" id="username" placeholder="broker">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password (Optional)</label>
+                    <input type="password" id="password" placeholder="password">
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="ssl" onchange="toggleSSLOptions()">
+                        Use SSL/TLS (MQTTS)
+                    </label>
+                </div>
+
+                <div id="sslOptions" style="display: none;">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="tlsVerify" checked>
+                            Verify server certificate
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="caCert">CA Certificate (Optional)</label>
+                        <textarea id="caCert" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="clientCert">Client Certificate (Optional)</label>
+                        <textarea id="clientCert" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="clientKey">Client Private Key (Optional)</label>
+                        <textarea id="clientKey" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <button id="connectBtn" onclick="console.log('BUTTON CLICKED!'); toggleConnection()">Connect</button>
+            </div>
+
+            <div class="connection-form">
+                <div class="form-group">
+                    <label for="topic">Topic to Subscribe</label>
+                    <input type="text" id="topic" placeholder="home/# or sensor/+/data">
+                </div>
+                
+                <button id="subscribeBtn" onclick="subscribeToTopic()" disabled>Subscribe</button>
+            </div>
+
+            <div class="visualization-selector">
+                <h3>Visualization Mode</h3>
+                <div class="viz-mode-list">
+                    <div class="viz-mode-btn" data-mode="bubbles">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="6" cy="6" r="3"/>
+                            <circle cx="18" cy="12" r="3"/>
+                            <circle cx="12" cy="18" r="3"/>
+                            <circle cx="8" cy="14" r="2"/>
+                        </svg>
+                        <span>Falling Bubbles (D3)</span>
+                    </div>
+                    <div class="viz-mode-btn" data-mode="radial">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        <span>Radial Burst</span>
+                    </div>
+                    <div class="viz-mode-btn" data-mode="starfield">
+                        <svg viewBox="0 0 24 24">
+                            <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26"/>
+                            <circle cx="19" cy="5" r="1"/>
+                            <circle cx="5" cy="7" r="1"/>
+                            <circle cx="20" cy="18" r="1"/>
+                            <circle cx="4" cy="19" r="1"/>
+                        </svg>
+                        <span>Starfield Mode</span>
+                    </div>
+                    <div class="viz-mode-btn" data-mode="network">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                            <circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="6" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <line x1="12" y1="12" x2="6" y2="6" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="18" y2="6" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="6" y2="18" stroke="currentColor" stroke-width="1"/>
+                            <line x1="12" y1="12" x2="18" y2="18" stroke="currentColor" stroke-width="1"/>
+                        </svg>
+                        <span>Network Graph</span>
+                    </div>
+                    <div class="viz-mode-btn" data-mode="map">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="12" cy="9" r="2.5" fill="currentColor"/>
+                        </svg>
+                        <span>Geographic Map</span>
+                    </div>
+                    <div class="viz-mode-btn disabled" data-mode="clusters" style="opacity: 0.3; pointer-events: none;">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.8"/>
+                            <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.6"/>
+                            <circle cx="6" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                            <circle cx="18" cy="16" r="3" fill="currentColor" opacity="0.8"/>
+                            <circle cx="16" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                            <circle cx="20" cy="12" r="2" fill="currentColor" opacity="0.6"/>
+                        </svg>
+                        <span>Clustered Bubbles - Refactoring</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="theme-selector">
+                <h3>Theme</h3>
+                <div class="form-group">
+                    <select id="themeMode" onchange="switchTheme()">
+                        <option value="default">Blue Gradient</option>
+                        <option value="dark">Neon Dark</option>
+                        <option value="spring">🌸 Spring</option>
+                        <option value="summer">☀️ Summer</option>
+                        <option value="autumn">🍂 Autumn</option>
+                        <option value="winter">❄️ Winter</option>
+                    </select>
+                </div>
+            </div>
+
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="message-flow" id="messageFlow">
+                <div class="live-indicator" id="liveIndicator" style="display: none;">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <div class="broker-url-display" id="brokerUrlDisplay" style="display: none;">
+                    <span id="brokerUrl"></span>
+                </div>
+
+                <div class="color-legend" id="colorLegend" style="display: none;">
+                    <div class="legend-title">Topic Colors</div>
+                    <div id="legendItems">
+                        <!-- Legend items will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <div class="stats-panel" id="statsPanel">
+                    <div class="stats-item">
+                        <span class="stats-label">Messages/sec:</span>
+                        <span class="stats-value" id="messageRate">0.0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Active Topics:</span>
+                        <span class="stats-value" id="activeTopics">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Connection:</span>
+                        <span class="stats-value" id="connectionStatus">Offline</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">FPS:</span>
+                        <span class="stats-value" id="frameRate">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Active Cards:</span>
+                        <span class="stats-value" id="activeCards">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flower-visualization" id="flowerVisualization" style="display: none;">
+                <div class="flower-container" id="flowerContainer">
+                    <div class="flower-center"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Details Modal -->
+    <div id="messageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Message Details</div>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <span class="modal-field-label">Customer</span>
+                    <div id="modalCustomer" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Topic</span>
+                    <div id="modalTopic" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Timestamp</span>
+                    <div id="modalTimestamp" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Payload</span>
+                    <div id="modalPayload" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">QoS</span>
+                    <div id="modalQos" class="modal-field-value"></div>
+                </div>
+                <div class="modal-field">
+                    <span class="modal-field-label">Retain</span>
+                    <div id="modalRetain" class="modal-field-value"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

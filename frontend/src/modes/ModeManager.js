@@ -84,7 +84,7 @@ class ModeManager {
 
         // Remove mode-specific CSS classes
         this.visualizer.domElements.messageFlow.classList.remove(
-            'starfield-mode', 'radial-mode', 'network-mode', 'bubbles-mode', 'clusters-mode'
+            'starfield-mode', 'radial-mode', 'network-mode', 'bubbles-mode', 'clusters-mode', 'map-mode'
         );
 
         // Clear any mode-specific timers or intervals
@@ -118,6 +118,8 @@ class ModeManager {
             this.initializeUnifiedMode(newMode);
         } else if (newMode === 'network') {
             this.initializeNetworkMode();
+        } else if (newMode === 'map') {
+            this.initializeMapMode();
         } else if (newMode === 'clusters') {
             this.initializeClustersMode();
         }
@@ -149,6 +151,13 @@ class ModeManager {
      */
     initializeNetworkMode() {
         console.log('ModeManager: Network mode initialization delegated to NetworkGraph component');
+    }
+
+    /**
+     * Map mode initialization is handled by MapVisualization component
+     */
+    initializeMapMode() {
+        console.log('ModeManager: Map mode initialization delegated to MapVisualization component');
     }
 
     /**

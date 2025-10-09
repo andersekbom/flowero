@@ -27,6 +27,7 @@ import BubbleAnimation from './src/visualization/BubbleAnimation.js';
 import NetworkGraph from './src/visualization/NetworkGraph.js';
 import StarfieldVisualization from './src/visualization/StarfieldVisualization.js';
 import RadialVisualization from './src/visualization/RadialVisualization.js';
+import MapVisualization from './src/visualization/MapVisualization.js';
 import { detectPassiveSupport, hasIntersectionObserver, hasRequestIdleCallback } from './src/config/BrowserDetection.js';
 import LayoutCalculator from './src/core/LayoutCalculator.js';
 import MessageProcessor from './src/core/MessageProcessor.js';
@@ -226,6 +227,14 @@ class MQTTVisualizer {
         console.log('🔴 RadialVisualization created:', this.radialVisualization);
         console.log('🔴 Calling initialize()...');
         this.radialVisualization.initialize();
+
+        // Initialize Map Visualization System
+        console.log('🗺️  Creating MapVisualization instance...');
+        this.mapVisualization = new MapVisualization(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🗺️  MapVisualization created:', this.mapVisualization);
+        console.log('🗺️  Calling initialize()...');
+        this.mapVisualization.initialize();
+        console.log('🗺️  MapVisualization initialization complete');
         console.log('🔴 RadialVisualization initialization complete');
 
         // Initialize layout management system
@@ -598,6 +607,18 @@ class MQTTVisualizer {
                 topic: messageData.topic,
                 timestamp: messageData.timestamp,
                 mode: 'radial'
+            });
+        } else if (this.visualizationMode === 'map' && this.mapVisualization) {
+            console.log('🗺️  Routing message to MapVisualization system:', messageData);
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+            // Send message to map visualization system
+            this.mapVisualization.addMessage(messageData);
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'map'
             });
         } else {
             // Route to other visualization modes (legacy)
@@ -2760,6 +2781,9 @@ class MQTTVisualizer {
         if (mode !== 'radial' && this.radialVisualization) {
             this.radialVisualization.deactivate();
         }
+        if (mode !== 'map' && this.mapVisualization) {
+            this.mapVisualization.deactivate();
+        }
 
         // Enable the requested mode
         if (mode === 'bubbles') {
@@ -2801,6 +2825,16 @@ class MQTTVisualizer {
             this.updateVisualizationButtonStates(mode);
 
             console.log('Radial mode activated successfully');
+            return true;
+        } else if (mode === 'map') {
+            // Activate the map visualization system
+            this.mapVisualization.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Map mode activated successfully');
             return true;
         }
 
