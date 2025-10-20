@@ -322,18 +322,18 @@ class DashboardGrid extends BaseVisualization {
         const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
         const statsPanel = document.getElementById('statsPanel');
 
-        // Move them to the dashboard header
-        if (liveIndicator && liveIndicator.parentNode !== this.headerContainer) {
+        // Move them to the dashboard header and ensure visibility
+        if (liveIndicator) {
             this.headerContainer.appendChild(liveIndicator);
-            liveIndicator.style.display = 'flex';
+            liveIndicator.style.setProperty('display', 'flex', 'important');
         }
-        if (brokerUrlDisplay && brokerUrlDisplay.parentNode !== this.headerContainer) {
+        if (brokerUrlDisplay) {
             this.headerContainer.appendChild(brokerUrlDisplay);
-            brokerUrlDisplay.style.display = 'block';
+            brokerUrlDisplay.style.setProperty('display', 'block', 'important');
         }
-        if (statsPanel && statsPanel.parentNode !== this.headerContainer) {
+        if (statsPanel) {
             this.headerContainer.appendChild(statsPanel);
-            statsPanel.style.display = 'block';
+            statsPanel.style.setProperty('display', 'block', 'important');
         }
     }
 

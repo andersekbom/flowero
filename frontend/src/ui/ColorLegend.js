@@ -161,7 +161,7 @@ class ColorLegend {
      */
     hide() {
         if (this.legendContainer) {
-            this.legendContainer.style.display = 'none';
+            this.legendContainer.style.setProperty('display', 'none', 'important');
         }
     }
 
