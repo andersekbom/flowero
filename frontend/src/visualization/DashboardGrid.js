@@ -233,7 +233,7 @@ class DashboardGrid extends BaseVisualization {
             }
 
             .device-bubble.pulse {
-                animation: devicePulse 1s ease-out;
+                animation: devicePulse 1.5s ease-in-out;
             }
 
             .device-bubble.inactive {
@@ -245,7 +245,7 @@ class DashboardGrid extends BaseVisualization {
                 0% {
                     transform: scale(1);
                 }
-                30% {
+                20% {
                     transform: scale(1.5);
                 }
                 100% {
@@ -295,6 +295,11 @@ class DashboardGrid extends BaseVisualization {
         super.activate();
         this.isRunning = true;
         this.startUpdateTimer();
+
+        // Show the dashboard container
+        if (this.dashboardContainer) {
+            this.dashboardContainer.style.display = 'flex';
+        }
 
         // Setup header elements if we're already connected
         // (connection_established won't fire again if we're already connected)
@@ -397,6 +402,12 @@ class DashboardGrid extends BaseVisualization {
         this.isRunning = false;
         this.stopUpdateTimer();
         this.restoreHeaderElements();
+
+        // Hide the dashboard container when switching to other modes
+        if (this.dashboardContainer) {
+            this.dashboardContainer.style.display = 'none';
+        }
+
         this.cleanup();
         // console.log('DashboardGrid: Deactivated');
     }
@@ -717,8 +728,10 @@ class DashboardGrid extends BaseVisualization {
     updateAllCards() {
         if (!this.isRunning) return;
 
-        // Re-render grid to update timestamps and activity states
-        this.renderGrid();
+        // Don't re-render the entire grid (which would interrupt animations)
+        // Instead, just update timestamps in-place
+        // The grid will be re-rendered when new messages arrive
+        // TODO: Could update just the timestamp elements here if needed
     }
 
     /**

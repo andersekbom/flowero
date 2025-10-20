@@ -597,11 +597,15 @@
             top: 20px;
             right: 20px;
             background: var(--stats-bg);
-            padding: 15px;
+            padding: 10px 15px;
             border-radius: 10px;
             min-width: 200px;
             z-index: 2000;
             border: 1px solid var(--border-color);
+            height: 42px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
         }
 
         .stats-item {
@@ -684,14 +688,16 @@
             border-radius: 20px;
             z-index: 2000;
             border: 1px solid var(--border-color);
+            height: 42px;
+            box-sizing: border-box;
         }
-        
+
         .broker-url-display {
             position: absolute;
             top: 65px;
             left: 20px;
             background: rgba(0, 0, 0, 0.4);
-            padding: 8px 12px;
+            padding: 10px 15px;
             border-radius: 15px;
             border: 1px solid var(--border-color);
             font-size: 15px;
@@ -701,6 +707,10 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             z-index: 2000;
+            height: 42px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
         }
 
         .color-legend {
