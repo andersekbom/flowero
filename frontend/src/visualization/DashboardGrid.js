@@ -315,25 +315,46 @@ class DashboardGrid extends BaseVisualization {
      * Setup header elements (Live indicator, broker URL, stats panel)
      */
     setupHeaderElements() {
-        if (!this.headerContainer) return;
+        if (!this.headerContainer) {
+            console.error('DashboardGrid: headerContainer not found');
+            return;
+        }
 
         // Get the elements from the DOM
         const liveIndicator = document.getElementById('liveIndicator');
         const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
         const statsPanel = document.getElementById('statsPanel');
 
+        console.log('DashboardGrid: Setting up header elements', {
+            liveIndicator: !!liveIndicator,
+            brokerUrlDisplay: !!brokerUrlDisplay,
+            statsPanel: !!statsPanel,
+            headerContainer: !!this.headerContainer
+        });
+
         // Move them to the dashboard header and ensure visibility
         if (liveIndicator) {
             this.headerContainer.appendChild(liveIndicator);
             liveIndicator.style.setProperty('display', 'flex', 'important');
+            console.log('DashboardGrid: Added liveIndicator to header');
+        } else {
+            console.warn('DashboardGrid: liveIndicator not found');
         }
+
         if (brokerUrlDisplay) {
             this.headerContainer.appendChild(brokerUrlDisplay);
             brokerUrlDisplay.style.setProperty('display', 'block', 'important');
+            console.log('DashboardGrid: Added brokerUrlDisplay to header');
+        } else {
+            console.warn('DashboardGrid: brokerUrlDisplay not found');
         }
+
         if (statsPanel) {
             this.headerContainer.appendChild(statsPanel);
             statsPanel.style.setProperty('display', 'block', 'important');
+            console.log('DashboardGrid: Added statsPanel to header');
+        } else {
+            console.warn('DashboardGrid: statsPanel not found');
         }
     }
 

@@ -162,6 +162,9 @@ class ColorLegend {
     hide() {
         if (this.legendContainer) {
             this.legendContainer.style.setProperty('display', 'none', 'important');
+            console.log('ColorLegend: Hidden', this.legendContainer);
+        } else {
+            console.warn('ColorLegend: Cannot hide - legendContainer not found');
         }
     }
 
