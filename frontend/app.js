@@ -26,6 +26,7 @@ import { BaseVisualization, CircleRenderer } from './src/visualization/BaseVisua
 import BubbleAnimation from './src/visualization/BubbleAnimation.js';
 import NetworkGraph from './src/visualization/NetworkGraph.js';
 import ClusteredBubbles from './src/visualization/ClusteredBubbles.js';
+import DashboardGrid from './src/visualization/DashboardGrid.js';
 import StarfieldVisualization from './src/visualization/StarfieldVisualization.js';
 import RadialVisualization from './src/visualization/RadialVisualization.js';
 import { detectPassiveSupport, hasIntersectionObserver, hasRequestIdleCallback } from './src/config/BrowserDetection.js';
@@ -235,6 +236,14 @@ class MQTTVisualizer {
         console.log('🟡 Calling initialize()...');
         this.clusteredBubbles.initialize();
         console.log('🟡 ClusteredBubbles initialization complete');
+
+        // Initialize Dashboard Grid Visualization System
+        console.log('🎛️ Creating DashboardGrid instance...');
+        this.dashboardGrid = new DashboardGrid(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
+        console.log('🎛️ DashboardGrid created:', this.dashboardGrid);
+        console.log('🎛️ Calling initialize()...');
+        this.dashboardGrid.initialize();
+        console.log('🎛️ DashboardGrid initialization complete');
 
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
@@ -485,6 +494,10 @@ class MQTTVisualizer {
                 // For clusters mode, get count from ClusteredBubbles
                 const state = this.clusteredBubbles.getState();
                 activeCards = state.activeNodes || 0;
+            } else if (this.visualizationMode === 'dashboard' && this.dashboardGrid) {
+                // For dashboard mode, get count from DashboardGrid
+                const state = this.dashboardGrid.getState();
+                activeCards = state.deviceCount || 0;
             } else {
                 // For other modes, use unified element tracker
                 activeCards = this.elementTracker ? this.elementTracker.getCounts().total : 0;
@@ -622,6 +635,18 @@ class MQTTVisualizer {
                 topic: messageData.topic,
                 timestamp: messageData.timestamp,
                 mode: 'clusters'
+            });
+        } else if (this.visualizationMode === 'dashboard' && this.dashboardGrid) {
+            console.log('🎛️ Routing message to DashboardGrid system:', messageData);
+            // Track active topics
+            this.activeTopics.add(messageData.topic);
+            // Send message to dashboard grid system
+            this.dashboardGrid.addMessage(messageData);
+            // Update stats
+            this.eventEmitter.emit('message_processed', {
+                topic: messageData.topic,
+                timestamp: messageData.timestamp,
+                mode: 'dashboard'
             });
         } else {
             // Route to other visualization modes (legacy)
@@ -2766,6 +2791,9 @@ class MQTTVisualizer {
         if (mode !== 'clusters' && this.clusteredBubbles) {
             this.clusteredBubbles.deactivate();
         }
+        if (mode !== 'dashboard' && this.dashboardGrid) {
+            this.dashboardGrid.deactivate();
+        }
 
         // Enable the requested mode
         if (mode === 'bubbles') {
@@ -2817,6 +2845,16 @@ class MQTTVisualizer {
             this.updateVisualizationButtonStates(mode);
 
             console.log('Clusters mode activated successfully');
+            return true;
+        } else if (mode === 'dashboard') {
+            // Activate the dashboard grid visualization system
+            this.dashboardGrid.activate();
+            this.visualizationMode = mode;
+
+            // Update button states
+            this.updateVisualizationButtonStates(mode);
+
+            console.log('Dashboard mode activated successfully');
             return true;
         }
 
