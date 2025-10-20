@@ -618,6 +618,7 @@ class NetworkGraph extends BaseVisualization {
                 return count.toString();
             });
 
+
         // Add click handlers
         nodeEnter.on('click', (event, d) => {
             this.eventEmitter.emit('node_clicked', {
@@ -641,28 +642,29 @@ class NetworkGraph extends BaseVisualization {
     }
 
     /**
-     * Create sequential pulse animation: Broker → Customer → Topic
+     * Create sequential pulse animation: Topic → Customer → Broker
+     * Visualizes messages flowing inward from devices to the MQTT broker
      */
     createSequentialPulse(brokerNode, customerNode, topicNode, color) {
         if (!brokerNode || !customerNode || !topicNode) return;
 
         const phaseDuration = 750; // 750ms per phase (faster than original 1500ms)
 
-        // Phase 1: Broker → Customer
-        const pulse1 = this.createPulseElement(brokerNode, color);
+        // Phase 1: Topic → Customer (from device towards customer node)
+        const pulse1 = this.createPulseElement(topicNode, color);
         pulse1.transition()
             .duration(phaseDuration)
-            .ease(d3.easeQuadOut)
+            .ease(d3.easeQuadIn)
             .attr('cx', customerNode.x)
             .attr('cy', customerNode.y)
             .on('end', () => {
-                // Phase 2: Customer → Topic
+                // Phase 2: Customer → Broker (from customer to central broker)
                 const pulse2 = this.createPulseElement(customerNode, color);
                 pulse2.transition()
                     .duration(phaseDuration)
-                    .ease(d3.easeQuadOut)
-                    .attr('cx', topicNode.x)
-                    .attr('cy', topicNode.y)
+                    .ease(d3.easeQuadIn)
+                    .attr('cx', brokerNode.x)
+                    .attr('cy', brokerNode.y)
                     .style('opacity', 0)
                     .on('end', () => pulse2.remove());
 
