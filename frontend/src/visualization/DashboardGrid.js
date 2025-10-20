@@ -428,6 +428,7 @@ class DashboardGrid extends BaseVisualization {
         const card = document.createElement('div');
         card.className = 'customer-card';
         card.style.borderColor = customerData.color;
+        card.style.color = customerData.color; // Set color for currentColor in CSS animation
 
         // Check if customer is active
         const timeSinceActivity = Date.now() - customerData.lastActivity;
