@@ -66,18 +66,28 @@ class DashboardGrid extends BaseVisualization {
             return;
         }
 
-        // Remove any existing grid
-        const existingGrid = this.container.querySelector('.dashboard-grid');
-        if (existingGrid) {
-            existingGrid.remove();
+        // Remove any existing dashboard container
+        const existingContainer = this.container.querySelector('.dashboard-container');
+        if (existingContainer) {
+            existingContainer.remove();
         }
 
-        // Create grid container
+        // Create main dashboard container
+        this.dashboardContainer = document.createElement('div');
+        this.dashboardContainer.className = 'dashboard-container';
+        this.container.appendChild(this.dashboardContainer);
+
+        // Create header for Live indicator, URL, and stats
+        this.headerContainer = document.createElement('div');
+        this.headerContainer.className = 'dashboard-header';
+        this.dashboardContainer.appendChild(this.headerContainer);
+
+        // Create grid container for customer cards
         this.gridContainer = document.createElement('div');
         this.gridContainer.className = 'dashboard-grid';
-        this.container.appendChild(this.gridContainer);
+        this.dashboardContainer.appendChild(this.gridContainer);
 
-        console.log('DashboardGrid: Grid container created');
+        console.log('DashboardGrid: Dashboard container created with header');
     }
 
     /**
@@ -94,13 +104,34 @@ class DashboardGrid extends BaseVisualization {
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
+            .dashboard-container {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+                background: transparent;
+            }
+
+            .dashboard-header {
+                display: flex;
+                gap: 20px;
+                padding: 20px 20px 10px 20px;
+                align-items: center;
+                background: rgba(0, 0, 0, 0.3);
+                border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .dashboard-header > * {
+                position: static !important;
+            }
+
             .dashboard-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(${this.options.cardMinWidth}px, 1fr));
                 gap: 20px;
                 padding: 20px;
                 width: 100%;
-                height: 100%;
+                flex: 1;
                 overflow-y: auto;
                 background: transparent;
             }
@@ -276,7 +307,57 @@ class DashboardGrid extends BaseVisualization {
         super.activate();
         this.isRunning = true;
         this.startUpdateTimer();
+        this.setupHeaderElements();
         console.log('DashboardGrid: Activated');
+    }
+
+    /**
+     * Setup header elements (Live indicator, broker URL, stats panel)
+     */
+    setupHeaderElements() {
+        if (!this.headerContainer) return;
+
+        // Get the elements from the DOM
+        const liveIndicator = document.getElementById('liveIndicator');
+        const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
+        const statsPanel = document.getElementById('statsPanel');
+
+        // Move them to the dashboard header
+        if (liveIndicator && liveIndicator.parentNode !== this.headerContainer) {
+            this.headerContainer.appendChild(liveIndicator);
+            liveIndicator.style.display = 'flex';
+        }
+        if (brokerUrlDisplay && brokerUrlDisplay.parentNode !== this.headerContainer) {
+            this.headerContainer.appendChild(brokerUrlDisplay);
+            brokerUrlDisplay.style.display = 'block';
+        }
+        if (statsPanel && statsPanel.parentNode !== this.headerContainer) {
+            this.headerContainer.appendChild(statsPanel);
+            statsPanel.style.display = 'block';
+        }
+    }
+
+    /**
+     * Restore header elements to their original position
+     */
+    restoreHeaderElements() {
+        const messageFlow = document.getElementById('messageFlow');
+        if (!messageFlow) return;
+
+        const liveIndicator = document.getElementById('liveIndicator');
+        const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
+        const statsPanel = document.getElementById('statsPanel');
+
+        // Move them back to message flow container
+        if (liveIndicator && liveIndicator.parentNode !== messageFlow) {
+            messageFlow.appendChild(liveIndicator);
+        }
+        if (brokerUrlDisplay && brokerUrlDisplay.parentNode !== messageFlow) {
+            messageFlow.appendChild(brokerUrlDisplay);
+        }
+        if (statsPanel && statsPanel.parentNode !== messageFlow) {
+            messageFlow.appendChild(statsPanel);
+        }
     }
 
     /**
@@ -286,6 +367,7 @@ class DashboardGrid extends BaseVisualization {
         super.deactivate();
         this.isRunning = false;
         this.stopUpdateTimer();
+        this.restoreHeaderElements();
         this.cleanup();
         console.log('DashboardGrid: Deactivated');
     }
