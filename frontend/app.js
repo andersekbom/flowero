@@ -154,23 +154,23 @@ class MQTTVisualizer {
         this.brokerNode = null;
         
         // Initialize DOM Manager
-        console.log('MQTTVisualizer: Initializing DOMManager...');
+        // console.log('MQTTVisualizer: Initializing DOMManager...');
         this.domManager = new DOMManager().initialize();
         this.domElements = this.domManager.getAll();
-        console.log('MQTTVisualizer: DOMManager initialized, elements:', Object.keys(this.domElements));
+        // console.log('MQTTVisualizer: DOMManager initialized, elements:', Object.keys(this.domElements));
 
         // Initialize MQTT Connection Manager
-        console.log('MQTTVisualizer: Initializing MQTT Connection Manager...');
+        // console.log('MQTTVisualizer: Initializing MQTT Connection Manager...');
         this.mqttConnectionManager = new MQTTConnectionManager(this.domElements, this.eventEmitter);
-        console.log('MQTTVisualizer: MQTT Connection Manager created:', this.mqttConnectionManager);
+        // console.log('MQTTVisualizer: MQTT Connection Manager created:', this.mqttConnectionManager);
         this.setupMQTTEventListeners();
-        console.log('MQTTVisualizer: MQTT event listeners setup complete');
+        // console.log('MQTTVisualizer: MQTT event listeners setup complete');
 
         // Initialize Sidebar Controller
-        console.log('MQTTVisualizer: Initializing SidebarController...');
+        // console.log('MQTTVisualizer: Initializing SidebarController...');
         try {
             this.sidebarController = new SidebarController(this.domManager, this.eventEmitter).initialize();
-            console.log('MQTTVisualizer: SidebarController initialized successfully');
+            // console.log('MQTTVisualizer: SidebarController initialized successfully');
             this.setupSidebarEventListeners();
         } catch (error) {
             console.error('MQTTVisualizer: Failed to initialize SidebarController:', error);
@@ -198,52 +198,52 @@ class MQTTVisualizer {
         this.setupColorLegendEventListeners();
 
         // Initialize Bubble Animation System
-        console.log('📝 Creating BubbleAnimation instance...');
+        // console.log('📝 Creating BubbleAnimation instance...');
         this.bubbleAnimation = new BubbleAnimation(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('📝 BubbleAnimation created:', this.bubbleAnimation);
-        console.log('📝 Calling initialize()...');
+        // console.log('📝 BubbleAnimation created:', this.bubbleAnimation);
+        // console.log('📝 Calling initialize()...');
         this.bubbleAnimation.initialize();
-        console.log('📝 BubbleAnimation initialization complete');
+        // console.log('📝 BubbleAnimation initialization complete');
 
         // Initialize Network Graph System
-        console.log('🌐 Creating NetworkGraph instance...');
+        // console.log('🌐 Creating NetworkGraph instance...');
         this.networkGraph = new NetworkGraph(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('🌐 NetworkGraph created:', this.networkGraph);
-        console.log('🌐 Calling initialize()...');
+        // console.log('🌐 NetworkGraph created:', this.networkGraph);
+        // console.log('🌐 Calling initialize()...');
         this.networkGraph.initialize();
-        console.log('🌐 NetworkGraph initialization complete');
+        // console.log('🌐 NetworkGraph initialization complete');
 
         // Initialize Starfield Visualization System
-        console.log('🌟 Creating StarfieldVisualization instance...');
+        // console.log('🌟 Creating StarfieldVisualization instance...');
         this.starfieldVisualization = new StarfieldVisualization(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('🌟 StarfieldVisualization created:', this.starfieldVisualization);
-        console.log('🌟 Calling initialize()...');
+        // console.log('🌟 StarfieldVisualization created:', this.starfieldVisualization);
+        // console.log('🌟 Calling initialize()...');
         this.starfieldVisualization.initialize();
-        console.log('🌟 StarfieldVisualization initialization complete');
+        // console.log('🌟 StarfieldVisualization initialization complete');
 
         // Initialize Radial Visualization System
-        console.log('🔴 Creating RadialVisualization instance...');
+        // console.log('🔴 Creating RadialVisualization instance...');
         this.radialVisualization = new RadialVisualization(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('🔴 RadialVisualization created:', this.radialVisualization);
-        console.log('🔴 Calling initialize()...');
+        // console.log('🔴 RadialVisualization created:', this.radialVisualization);
+        // console.log('🔴 Calling initialize()...');
         this.radialVisualization.initialize();
-        console.log('🔴 RadialVisualization initialization complete');
+        // console.log('🔴 RadialVisualization initialization complete');
 
         // Initialize Clustered Bubbles Visualization System
-        console.log('🟡 Creating ClusteredBubbles instance...');
+        // console.log('🟡 Creating ClusteredBubbles instance...');
         this.clusteredBubbles = new ClusteredBubbles(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('🟡 ClusteredBubbles created:', this.clusteredBubbles);
-        console.log('🟡 Calling initialize()...');
+        // console.log('🟡 ClusteredBubbles created:', this.clusteredBubbles);
+        // console.log('🟡 Calling initialize()...');
         this.clusteredBubbles.initialize();
-        console.log('🟡 ClusteredBubbles initialization complete');
+        // console.log('🟡 ClusteredBubbles initialization complete');
 
         // Initialize Dashboard Grid Visualization System
-        console.log('🎛️ Creating DashboardGrid instance...');
+        // console.log('🎛️ Creating DashboardGrid instance...');
         this.dashboardGrid = new DashboardGrid(this.domManager, this.eventEmitter, this.themeManager, this.colorLegend);
-        console.log('🎛️ DashboardGrid created:', this.dashboardGrid);
-        console.log('🎛️ Calling initialize()...');
+        // console.log('🎛️ DashboardGrid created:', this.dashboardGrid);
+        // console.log('🎛️ Calling initialize()...');
         this.dashboardGrid.initialize();
-        console.log('🎛️ DashboardGrid initialization complete');
+        // console.log('🎛️ DashboardGrid initialization complete');
 
         // Initialize layout management system
         this.layoutCalculator = new LayoutCalculator(this.domElements.messageFlow);
@@ -358,16 +358,29 @@ class MQTTVisualizer {
         // Listen to MQTT connection events
         this.eventEmitter.on('connection_established', () => {
             this.isConnected = true;
-            console.log('MQTT connection established');
+            // console.log('MQTT connection established');
             // Update UI elements when connected
             this.domElements.subscribeBtn.disabled = false;
             this.domElements.liveIndicator.style.display = 'flex';
             // StatsPanel handles its own display through events
+
+            // Setup dashboard header if in dashboard mode (now that elements exist)
+            console.log('Checking dashboard mode:', {
+                visualizationMode: this.visualizationMode,
+                hasDashboardGrid: !!this.dashboardGrid
+            });
+            if (this.visualizationMode === 'dashboard' && this.dashboardGrid) {
+                console.log('Calling setupHeaderElements after connection');
+                // Wait a moment for elements to be created
+                setTimeout(() => {
+                    this.dashboardGrid.setupHeaderElements();
+                }, 100);
+            }
         });
 
         this.eventEmitter.on('connection_lost', () => {
             this.isConnected = false;
-            console.log('MQTT connection lost');
+            // console.log('MQTT connection lost');
             // Update UI elements when disconnected
             this.domElements.subscribeBtn.disabled = true;
             this.domElements.liveIndicator.style.display = 'none';
@@ -385,11 +398,11 @@ class MQTTVisualizer {
         });
 
         this.eventEmitter.on('topic_subscribed', (topic) => {
-            console.log('Successfully subscribed to:', topic);
+            // console.log('Successfully subscribed to:', topic);
         });
 
         this.eventEmitter.on('topic_unsubscribed', (topic) => {
-            console.log('Successfully unsubscribed from:', topic);
+            // console.log('Successfully unsubscribed from:', topic);
         });
 
         this.eventEmitter.on('broker_info', (brokerInfo) => {
@@ -407,7 +420,7 @@ class MQTTVisualizer {
     setupSidebarEventListeners() {
         // Listen to sidebar state changes
         this.eventEmitter.on('sidebar_state_changed', (state) => {
-            console.log(`Sidebar state changed - collapsed: ${state.collapsed}`);
+            // console.log(`Sidebar state changed - collapsed: ${state.collapsed}`);
         });
 
         this.eventEmitter.on('sidebar_transition_complete', (state) => {
@@ -421,7 +434,7 @@ class MQTTVisualizer {
 
         // Handle automatic collapse on small screens
         this.eventEmitter.on('sidebar_auto_collapsed', (data) => {
-            console.log('Sidebar auto-collapsed due to:', data.reason);
+            // console.log('Sidebar auto-collapsed due to:', data.reason);
         });
 
         // Handle resize events
@@ -437,7 +450,7 @@ class MQTTVisualizer {
     setupThemeEventListeners() {
         // Listen to theme changes
         this.eventEmitter.on('theme_changed', (data) => {
-            console.log(`Theme changed from '${data.oldTheme}' to '${data.newTheme}'`);
+            // console.log(`Theme changed from '${data.oldTheme}' to '${data.newTheme}'`);
         });
 
         this.eventEmitter.on('theme_applied', (data) => {
@@ -573,8 +586,6 @@ class MQTTVisualizer {
 
         // Route message to appropriate visualization system
         if (this.visualizationMode === 'bubbles' && this.bubbleAnimation) {
-            console.log('📨 Routing message to BubbleAnimation system:', messageData);
-
             // Track active topics
             this.activeTopics.add(messageData.topic);
 
@@ -601,7 +612,6 @@ class MQTTVisualizer {
                 mode: 'network'
             });
         } else if (this.visualizationMode === 'starfield' && this.starfieldVisualization) {
-            console.log('🌟 Routing message to StarfieldVisualization system:', messageData);
             // Track active topics
             this.activeTopics.add(messageData.topic);
             // Send message to starfield visualization system
@@ -613,7 +623,6 @@ class MQTTVisualizer {
                 mode: 'starfield'
             });
         } else if (this.visualizationMode === 'radial' && this.radialVisualization) {
-            console.log('🔴 Routing message to RadialVisualization system:', messageData);
             // Track active topics
             this.activeTopics.add(messageData.topic);
             // Send message to radial visualization system
@@ -625,7 +634,6 @@ class MQTTVisualizer {
                 mode: 'radial'
             });
         } else if (this.visualizationMode === 'clusters' && this.clusteredBubbles) {
-            console.log('🟡 Routing message to ClusteredBubbles system:', messageData);
             // Track active topics
             this.activeTopics.add(messageData.topic);
             // Send message to clustered bubbles system
@@ -637,7 +645,6 @@ class MQTTVisualizer {
                 mode: 'clusters'
             });
         } else if (this.visualizationMode === 'dashboard' && this.dashboardGrid) {
-            console.log('🎛️ Routing message to DashboardGrid system:', messageData);
             // Track active topics
             this.activeTopics.add(messageData.topic);
             // Send message to dashboard grid system
@@ -2773,7 +2780,7 @@ class MQTTVisualizer {
             mode = activeBtn ? activeBtn.dataset.mode : 'radial';
         }
 
-        console.log(`Setting visualization mode to: ${mode}`);
+        // console.log(`Setting visualization mode to: ${mode}`);
 
         // Deactivate current visualization system (avoid deactivating the target)
         if (mode !== 'bubbles' && this.bubbleAnimation) {
@@ -2809,7 +2816,7 @@ class MQTTVisualizer {
             // Update button states
             this.updateVisualizationButtonStates(mode);
 
-            console.log('Bubbles mode activated successfully');
+            // console.log('Bubbles mode activated successfully');
             return true;
         } else if (mode === 'network') {
             // Activate the network graph system
@@ -2819,7 +2826,7 @@ class MQTTVisualizer {
             // Update button states
             this.updateVisualizationButtonStates(mode);
 
-            console.log('Network mode activated successfully');
+            // console.log('Network mode activated successfully');
             return true;
         } else if (mode === 'starfield') {
             // Activate the starfield visualization system
@@ -2829,7 +2836,7 @@ class MQTTVisualizer {
             // Update button states
             this.updateVisualizationButtonStates(mode);
 
-            console.log('Starfield mode activated successfully');
+            // console.log('Starfield mode activated successfully');
             return true;
         } else if (mode === 'radial') {
             // Activate the radial visualization system
@@ -2839,7 +2846,7 @@ class MQTTVisualizer {
             // Update button states
             this.updateVisualizationButtonStates(mode);
 
-            console.log('Radial mode activated successfully');
+            // console.log('Radial mode activated successfully');
             return true;
         } else if (mode === 'clusters') {
             // Activate the clustered bubbles visualization system
@@ -2849,7 +2856,7 @@ class MQTTVisualizer {
             // Update button states
             this.updateVisualizationButtonStates(mode);
 
-            console.log('Clusters mode activated successfully');
+            // console.log('Clusters mode activated successfully');
             return true;
         } else if (mode === 'dashboard') {
             // Activate the dashboard grid visualization system
@@ -2869,7 +2876,7 @@ class MQTTVisualizer {
         }
 
         // Other visualization modes are temporarily disabled during refactoring
-        console.log(`Visualization mode '${mode}' is temporarily disabled during refactoring`);
+        // console.log(`Visualization mode '${mode}' is temporarily disabled during refactoring`);
 
         // Show refactoring status instead
         this.showRefactoringStatus();
@@ -3148,7 +3155,13 @@ class MQTTVisualizer {
             this.domElements.colorLegend.style.display = 'none';
             return;
         }
-        
+
+        // Don't show color legend in dashboard mode (colors are in the cards)
+        if (this.visualizationMode === 'dashboard') {
+            this.domElements.colorLegend.style.setProperty('display', 'none', 'important');
+            return;
+        }
+
         this.domElements.colorLegend.style.display = 'block';
         this.domElements.legendItems.innerHTML = '';
         
@@ -3340,22 +3353,22 @@ class MQTTVisualizer {
 // Main application initialization
 let visualizer;
 
-console.log('🎯 APP.JS LOADED SUCCESSFULLY! Starting initialization...');
+// console.log('🎯 APP.JS LOADED SUCCESSFULLY! Starting initialization...');
 
 /**
  * Initialize the application
  */
 function initializeApplication() {
-    console.log('🚀 Initializing MQTT Visualizer...');
+    // console.log('🚀 Initializing MQTT Visualizer...');
     try {
-        console.log('📝 Creating new MQTTVisualizer instance...');
+        // console.log('📝 Creating new MQTTVisualizer instance...');
         visualizer = new MQTTVisualizer();
 
         // Setup global functions for HTML onclick handlers
         setupGlobalFunctions(visualizer);
 
-        console.log('✅ Visualizer initialized successfully:', visualizer);
-        console.log('🎯 Global functions available:', typeof window.toggleConnection);
+        // console.log('✅ Visualizer initialized successfully:', visualizer);
+        // console.log('🎯 Global functions available:', typeof window.toggleConnection);
 
         return visualizer;
     } catch (error) {
@@ -3367,19 +3380,19 @@ function initializeApplication() {
 }
 
 // Initialize when page loads
-console.log('🔧 Setting up DOMContentLoaded listener...');
+// console.log('🔧 Setting up DOMContentLoaded listener...');
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 DOMContentLoaded event fired!');
+    // console.log('🚀 DOMContentLoaded event fired!');
     initializeApplication();
 });
 
-console.log('✅ DOMContentLoaded listener added successfully');
+// console.log('✅ DOMContentLoaded listener added successfully');
 
 // Also try immediate initialization if DOM is already loaded
 if (document.readyState === 'loading') {
-    console.log('📋 DOM is still loading, waiting for DOMContentLoaded...');
+    // console.log('📋 DOM is still loading, waiting for DOMContentLoaded...');
 } else {
-    console.log('📋 DOM already loaded, initializing immediately...');
+    // console.log('📋 DOM already loaded, initializing immediately...');
     initializeApplication();
 }

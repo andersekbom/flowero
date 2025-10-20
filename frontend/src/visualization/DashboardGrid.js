@@ -19,7 +19,6 @@ class DashboardGrid extends BaseVisualization {
             cardPadding: 15,
             deviceRadius: 8,
             deviceSpacing: 4,
-            messageLifetime: 30000,      // 30 seconds to show as "active"
             activityFadeTime: 60000,     // 1 minute until considered inactive
             maxMessagesPerDevice: 100,   // Max message count to track
             updateInterval: 1000,        // Update stats every second
@@ -30,6 +29,8 @@ class DashboardGrid extends BaseVisualization {
         this.customers = new Map();      // customer -> customer data
         this.devices = new Map();        // deviceKey -> device data
         this.deviceMessages = new Map(); // deviceKey -> message array
+        this.customerCardElements = new Map(); // customer -> DOM card element
+        this.deviceBubbleElements = new Map(); // deviceKey -> DOM bubble element
 
         // DOM elements
         this.gridContainer = null;
@@ -43,7 +44,7 @@ class DashboardGrid extends BaseVisualization {
      * Initialize the dashboard grid visualization
      */
     initialize() {
-        console.log('🎛️ DashboardGrid: Starting initialization...');
+        // console.log('🎛️ DashboardGrid: Starting initialization...');
         super.initialize();
 
         if (!this.container) {
@@ -53,7 +54,7 @@ class DashboardGrid extends BaseVisualization {
 
         this.setupGridContainer();
         this.setupStyles();
-        console.log('DashboardGrid: Initialized successfully');
+        // console.log('DashboardGrid: Initialized successfully');
         return this;
     }
 
@@ -80,6 +81,7 @@ class DashboardGrid extends BaseVisualization {
         // Create header for Live indicator, URL, and stats
         this.headerContainer = document.createElement('div');
         this.headerContainer.className = 'dashboard-header';
+        this.headerContainer.innerHTML = '<div style="color: white; padding: 10px;">Dashboard Header</div>';
         this.dashboardContainer.appendChild(this.headerContainer);
 
         // Create grid container for customer cards
@@ -87,7 +89,7 @@ class DashboardGrid extends BaseVisualization {
         this.gridContainer.className = 'dashboard-grid';
         this.dashboardContainer.appendChild(this.gridContainer);
 
-        console.log('DashboardGrid: Dashboard container created with header');
+        // console.log('DashboardGrid: Dashboard container created with header');
     }
 
     /**
@@ -113,16 +115,13 @@ class DashboardGrid extends BaseVisualization {
             }
 
             .dashboard-header {
-                display: flex;
+                display: flex !important;
                 gap: 20px;
                 padding: 20px 20px 10px 20px;
                 align-items: center;
                 background: rgba(0, 0, 0, 0.3);
                 border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-            }
-
-            .dashboard-header > * {
-                position: static !important;
+                min-height: 60px;
             }
 
             .dashboard-grid {
@@ -153,20 +152,6 @@ class DashboardGrid extends BaseVisualization {
                 box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
             }
 
-            .customer-card.active {
-                animation: borderGlow 2s ease-in-out infinite;
-            }
-
-            @keyframes borderGlow {
-                0%, 100% {
-                    border-color: currentColor;
-                    box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
-                }
-                50% {
-                    border-color: currentColor;
-                    box-shadow: 0 0 16px currentColor, 0 0 32px currentColor;
-                }
-            }
 
             .customer-header {
                 display: flex;
@@ -247,8 +232,8 @@ class DashboardGrid extends BaseVisualization {
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
             }
 
-            .device-bubble.active {
-                animation: pulse 2s ease-in-out infinite;
+            .device-bubble.pulse {
+                animation: devicePulse 1s ease-out;
             }
 
             .device-bubble.inactive {
@@ -256,12 +241,15 @@ class DashboardGrid extends BaseVisualization {
                 filter: grayscale(0.8);
             }
 
-            @keyframes pulse {
-                0%, 100% {
-                    box-shadow: 0 0 0 0 currentColor;
+            @keyframes devicePulse {
+                0% {
+                    transform: scale(1);
                 }
-                50% {
-                    box-shadow: 0 0 0 8px transparent;
+                30% {
+                    transform: scale(1.5);
+                }
+                100% {
+                    transform: scale(1);
                 }
             }
 
@@ -307,8 +295,15 @@ class DashboardGrid extends BaseVisualization {
         super.activate();
         this.isRunning = true;
         this.startUpdateTimer();
-        this.setupHeaderElements();
-        console.log('DashboardGrid: Activated');
+
+        // Setup header elements if we're already connected
+        // (connection_established won't fire again if we're already connected)
+        // Use animation frames to ensure DOM is ready
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                this.setupHeaderElements();
+            });
+        });
     }
 
     /**
@@ -320,41 +315,51 @@ class DashboardGrid extends BaseVisualization {
             return;
         }
 
-        // Get the elements from the DOM
-        const liveIndicator = document.getElementById('liveIndicator');
-        const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
-        const statsPanel = document.getElementById('statsPanel');
+        // Clear the placeholder text
+        this.headerContainer.innerHTML = '';
 
-        console.log('DashboardGrid: Setting up header elements', {
-            liveIndicator: !!liveIndicator,
-            brokerUrlDisplay: !!brokerUrlDisplay,
-            statsPanel: !!statsPanel,
-            headerContainer: !!this.headerContainer
-        });
+        // Get the elements from DOMManager (which has cached them during initialization)
+        const domElements = this.domManager.getAll();
+        const liveIndicator = domElements.liveIndicator;
+        const brokerUrlDisplay = domElements.brokerUrlDisplay;
+        const statsPanel = domElements.statsPanel;
 
         // Move them to the dashboard header and ensure visibility
         if (liveIndicator) {
             this.headerContainer.appendChild(liveIndicator);
-            liveIndicator.style.setProperty('display', 'flex', 'important');
-            console.log('DashboardGrid: Added liveIndicator to header');
-        } else {
-            console.warn('DashboardGrid: liveIndicator not found');
+
+            // Override absolute positioning and force visibility
+            liveIndicator.style.position = 'static';
+            liveIndicator.style.display = 'flex';
+            liveIndicator.style.removeProperty('top');
+            liveIndicator.style.removeProperty('left');
+            liveIndicator.style.removeProperty('right');
+            liveIndicator.style.removeProperty('bottom');
+
         }
 
         if (brokerUrlDisplay) {
             this.headerContainer.appendChild(brokerUrlDisplay);
-            brokerUrlDisplay.style.setProperty('display', 'block', 'important');
-            console.log('DashboardGrid: Added brokerUrlDisplay to header');
-        } else {
-            console.warn('DashboardGrid: brokerUrlDisplay not found');
+
+            // Override absolute positioning from CSS
+            brokerUrlDisplay.style.position = 'static';
+            brokerUrlDisplay.style.display = 'block';
+            brokerUrlDisplay.style.removeProperty('top');
+            brokerUrlDisplay.style.removeProperty('left');
+            brokerUrlDisplay.style.removeProperty('right');
+            brokerUrlDisplay.style.removeProperty('bottom');
         }
 
         if (statsPanel) {
             this.headerContainer.appendChild(statsPanel);
-            statsPanel.style.setProperty('display', 'block', 'important');
-            console.log('DashboardGrid: Added statsPanel to header');
-        } else {
-            console.warn('DashboardGrid: statsPanel not found');
+
+            // Override absolute positioning from CSS
+            statsPanel.style.position = 'static';
+            statsPanel.style.display = 'flex';
+            statsPanel.style.removeProperty('top');
+            statsPanel.style.removeProperty('left');
+            statsPanel.style.removeProperty('right');
+            statsPanel.style.removeProperty('bottom');
         }
     }
 
@@ -369,15 +374,18 @@ class DashboardGrid extends BaseVisualization {
         const brokerUrlDisplay = document.getElementById('brokerUrlDisplay');
         const statsPanel = document.getElementById('statsPanel');
 
-        // Move them back to message flow container
+        // Move them back to message flow container and restore positioning
         if (liveIndicator && liveIndicator.parentNode !== messageFlow) {
             messageFlow.appendChild(liveIndicator);
+            liveIndicator.style.removeProperty('position');
         }
         if (brokerUrlDisplay && brokerUrlDisplay.parentNode !== messageFlow) {
             messageFlow.appendChild(brokerUrlDisplay);
+            brokerUrlDisplay.style.removeProperty('position');
         }
         if (statsPanel && statsPanel.parentNode !== messageFlow) {
             messageFlow.appendChild(statsPanel);
+            statsPanel.style.removeProperty('position');
         }
     }
 
@@ -390,7 +398,7 @@ class DashboardGrid extends BaseVisualization {
         this.stopUpdateTimer();
         this.restoreHeaderElements();
         this.cleanup();
-        console.log('DashboardGrid: Deactivated');
+        // console.log('DashboardGrid: Deactivated');
     }
 
     /**
@@ -436,11 +444,31 @@ class DashboardGrid extends BaseVisualization {
         // Update or create device data
         this.updateDeviceData(deviceKey, customer, deviceId, processedMessage);
 
-        // Update visualization
+        // Update visualization (this recreates all cards)
         this.renderGrid();
+
+        // Trigger pulse animation on the device bubble (after grid is rendered)
+        this.triggerDevicePulse(deviceKey);
 
         // Track performance
         this.performanceMetrics.elementsCreated++;
+    }
+
+    /**
+     * Trigger a pulse animation on a device bubble
+     */
+    triggerDevicePulse(deviceKey) {
+        const bubble = this.deviceBubbleElements.get(deviceKey);
+        if (!bubble) return;
+
+        // Remove and re-add the class to restart animation
+        bubble.classList.remove('pulse');
+
+        // Force reflow to restart the animation
+        void bubble.offsetWidth;
+
+        // Add the class to trigger animation
+        bubble.classList.add('pulse');
     }
 
     /**
@@ -533,12 +561,8 @@ class DashboardGrid extends BaseVisualization {
         card.style.borderColor = customerData.color;
         card.style.color = customerData.color; // Set color for currentColor in CSS animation
 
-        // Check if customer is active
-        const timeSinceActivity = Date.now() - customerData.lastActivity;
-        const isActive = timeSinceActivity < this.options.messageLifetime;
-        if (isActive) {
-            card.classList.add('active');
-        }
+        // Store reference to card element for triggering pulse animations
+        this.customerCardElements.set(customerData.id, card);
 
         // Header with customer name and device count
         const header = document.createElement('div');
@@ -629,13 +653,13 @@ class DashboardGrid extends BaseVisualization {
         const bubble = document.createElement('div');
         bubble.className = 'device-bubble';
 
+        // Store reference to bubble element for triggering pulse animations
+        this.deviceBubbleElements.set(device.key, bubble);
+
         const timeSinceActivity = Date.now() - device.lastActivity;
-        const isActive = timeSinceActivity < this.options.messageLifetime;
         const isRecent = timeSinceActivity < this.options.activityFadeTime;
 
-        if (isActive) {
-            bubble.classList.add('active');
-        } else if (!isRecent) {
+        if (!isRecent) {
             bubble.classList.add('inactive');
         }
 
@@ -711,7 +735,7 @@ class DashboardGrid extends BaseVisualization {
         this.devices.clear();
         this.deviceMessages.clear();
 
-        console.log('DashboardGrid: Cleanup completed');
+        // console.log('DashboardGrid: Cleanup completed');
         super.cleanup();
     }
 
@@ -755,7 +779,7 @@ class DashboardGrid extends BaseVisualization {
         }
 
         super.destroy();
-        console.log('DashboardGrid: Destroyed');
+        // console.log('DashboardGrid: Destroyed');
     }
 }
 

@@ -20,6 +20,7 @@ class ColorLegend {
         this.colorIndex = 0;
         this.lastUpdateTimes = new Map(); // Track when each customer was last seen
         this.initialized = false;
+        this.forceHidden = false; // Track if legend should stay hidden (e.g., in dashboard mode)
 
         // DOM elements
         this.legendContainer = null;
@@ -131,8 +132,13 @@ class ColorLegend {
         });
 
         // Show/hide legend container based on content
+        // But respect forceHidden flag (used in dashboard mode)
         if (this.legendContainer) {
-            this.legendContainer.style.display = activeCustomers.length > 0 ? 'block' : 'none';
+            if (this.forceHidden) {
+                this.legendContainer.style.setProperty('display', 'none', 'important');
+            } else {
+                this.legendContainer.style.display = activeCustomers.length > 0 ? 'block' : 'none';
+            }
         }
     }
 
@@ -151,20 +157,19 @@ class ColorLegend {
      * Show the color legend
      */
     show() {
+        this.forceHidden = false;
         if (this.legendContainer) {
             this.legendContainer.style.display = '';
         }
     }
 
     /**
-     * Hide the color legend
+     * Hide the color legend (and keep it hidden even when customers are added)
      */
     hide() {
+        this.forceHidden = true;
         if (this.legendContainer) {
             this.legendContainer.style.setProperty('display', 'none', 'important');
-            console.log('ColorLegend: Hidden', this.legendContainer);
-        } else {
-            console.warn('ColorLegend: Cannot hide - legendContainer not found');
         }
     }
 
