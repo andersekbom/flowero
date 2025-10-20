@@ -343,6 +343,57 @@ class NetworkGraph extends BaseVisualization {
     }
 
     /**
+     * Create drag behavior for the broker node with rubber band snap-back
+     */
+    createBrokerDragBehavior() {
+        const rect = this.container.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        return d3.drag()
+            .on('start', (event, d) => {
+                if (!event.active) this.simulation.alphaTarget(0.3).restart();
+                // Store original center position
+                d.centerX = centerX;
+                d.centerY = centerY;
+                // Unfix the broker position to allow dragging
+                d.fx = d.x;
+                d.fy = d.y;
+            })
+            .on('drag', (event, d) => {
+                // Update broker position as it's dragged
+                d.fx = event.x;
+                d.fy = event.y;
+            })
+            .on('end', (event, d) => {
+                if (!event.active) this.simulation.alphaTarget(0);
+
+                // Animate broker node back to center with rubber band effect
+                const snapDuration = 800;
+
+                // Use D3 transition for smooth snap-back
+                d3.transition()
+                    .duration(snapDuration)
+                    .ease(d3.easeElastic.period(0.3))
+                    .tween('snap-back', () => {
+                        const startX = d.x;
+                        const startY = d.y;
+                        return (t) => {
+                            d.fx = startX + (centerX - startX) * t;
+                            d.fy = startY + (centerY - startY) * t;
+                            this.simulation.alpha(Math.max(0.1, 0.3 * (1 - t)));
+                        };
+                    })
+                    .on('end', () => {
+                        // Fix broker back to center after animation
+                        d.fx = centerX;
+                        d.fy = centerY;
+                        this.simulation.alpha(0.3).restart();
+                    });
+            });
+    }
+
+    /**
      * Handle simulation tick
      */
     onTick() {
@@ -618,6 +669,10 @@ class NetworkGraph extends BaseVisualization {
                 return count.toString();
             });
 
+
+        // Add drag behavior to broker node
+        nodeEnter.filter(d => d.type === 'broker')
+            .call(this.createBrokerDragBehavior());
 
         // Add click handlers
         nodeEnter.on('click', (event, d) => {
