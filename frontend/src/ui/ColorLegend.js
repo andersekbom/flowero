@@ -148,6 +148,24 @@ class ColorLegend {
     }
 
     /**
+     * Show the color legend
+     */
+    show() {
+        if (this.legendContainer) {
+            this.legendContainer.style.display = '';
+        }
+    }
+
+    /**
+     * Hide the color legend
+     */
+    hide() {
+        if (this.legendContainer) {
+            this.legendContainer.style.display = 'none';
+        }
+    }
+
+    /**
      * Setup automatic cleanup of old colors
      */
     setupAutoCleanup() {

@@ -2796,6 +2796,11 @@ class MQTTVisualizer {
         }
 
         // Enable the requested mode
+        // Show color legend for all modes except dashboard
+        if (mode !== 'dashboard' && this.colorLegend) {
+            this.colorLegend.show();
+        }
+
         if (mode === 'bubbles') {
             // Activate the bubble animation system
             this.bubbleAnimation.activate();
@@ -2850,6 +2855,11 @@ class MQTTVisualizer {
             // Activate the dashboard grid visualization system
             this.dashboardGrid.activate();
             this.visualizationMode = mode;
+
+            // Hide color legend for dashboard mode (colors shown in cards)
+            if (this.colorLegend) {
+                this.colorLegend.hide();
+            }
 
             // Update button states
             this.updateVisualizationButtonStates(mode);
