@@ -123,8 +123,18 @@ class DashboardGrid extends BaseVisualization {
             }
 
             .customer-card.active {
-                border-color: currentColor;
-                box-shadow: 0 4px 12px currentColor;
+                animation: borderGlow 2s ease-in-out infinite;
+            }
+
+            @keyframes borderGlow {
+                0%, 100% {
+                    border-color: currentColor;
+                    box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
+                }
+                50% {
+                    border-color: currentColor;
+                    box-shadow: 0 0 16px currentColor, 0 0 32px currentColor;
+                }
             }
 
             .customer-header {
@@ -340,7 +350,8 @@ class DashboardGrid extends BaseVisualization {
                 color: this.colorLegend.getCustomerColor(customer),
                 devices: new Set(),
                 totalMessages: 0,
-                lastActivity: Date.now()
+                lastActivity: Date.now(),
+                firstSeen: Date.now()  // Track when customer first appeared
             });
         }
 
@@ -399,9 +410,9 @@ class DashboardGrid extends BaseVisualization {
         // Clear existing cards
         this.gridContainer.innerHTML = '';
 
-        // Sort customers by activity (most recent first)
+        // Sort customers by first appearance (stable order)
         const sortedCustomers = Array.from(this.customers.values())
-            .sort((a, b) => b.lastActivity - a.lastActivity);
+            .sort((a, b) => a.firstSeen - b.firstSeen);
 
         // Create card for each customer
         sortedCustomers.forEach(customerData => {
